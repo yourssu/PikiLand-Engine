@@ -1,3 +1,16 @@
 spring:
   main:
     web-application-type: none
+
+app:
+  ai:
+    base-url: ${PIKILAND_AI_BASE_URL:${APP_AI_BASE_URL:https://api.openai.com/v1}}
+    api-key: ${OPENAI_API_KEY:}
+    model: ${AI_MODEL:gpt-4o}
+  anthropic:
+    base-url: ${PIKILAND_AI_BASE_URL:${APP_ANTHROPIC_BASE_URL:https://api.anthropic.com/v1}}
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: ${AI_MODEL:claude-3-5-sonnet-20240620}
+  github:
+    app-id: ${GITHUB_APP_ID:}
+    private-key-path: ${GITHUB_PRIVATE_KEY_PATH:github-app-private-key.pem}

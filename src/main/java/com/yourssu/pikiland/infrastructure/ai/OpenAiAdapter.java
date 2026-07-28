@@ -25,7 +25,7 @@ public class OpenAiAdapter implements AiAgentPort {
     private final ObjectMapper objectMapper;
 
     public OpenAiAdapter(
-            @Value("${app.ai.base-url}") String baseUrl,
+            @Value("${app.ai.base-url:https://api.openai.com/v1}") String baseUrl,
             @Value("${app.ai.api-key:}") String apiKey,
             @Value("${app.ai.model:gpt-4o}") String defaultModel,
             Optional<RestTemplate> restTemplateOpt) { // Injected Optional RestTemplate

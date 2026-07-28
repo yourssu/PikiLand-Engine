@@ -56,4 +56,13 @@ class OpenAiAdapterTest {
         String oldCode = result.getPrCandidates().get(0).getPatchInstructions().get(0).getOldCode();
         assertTrue(oldCode.contains("//example.com/api"), "The // string inside JSON string literal should not be corrupted by regex");
     }
+
+    @Test
+    @DisplayName("OpenAiAdapter baseUrl 기본값 및 getEffectiveBaseUrl 동작 검증")
+    void getEffectiveBaseUrl_FallbackAndCustomEnvTest() {
+        OpenAiAdapter adapterWithDefault = new OpenAiAdapter("https://api.openai.com/v1", "", "gpt-4o", java.util.Optional.empty());
+        String effectiveUrl = ReflectionTestUtils.invokeMethod(adapterWithDefault, "getEffectiveBaseUrl");
+        assertEquals("https://api.openai.com/v1", effectiveUrl);
+    }
 }
+
