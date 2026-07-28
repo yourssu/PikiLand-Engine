@@ -1,0 +1,39 @@
+# Legacy Python
+.venv
+__pycache__
+
+# Gradle
+.gradle/
+build/
+.gradletasknamecache
+
+# IDEs and Editors
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+.metadata/
+
+# Operating Systems
+.DS_Store
+Thumbs.db
+
+# Local database (H2 file-based DB)
+data/
+*.mv.db
+*.trace.db
+*.db
+
+# Temporary files and logs
+*.log
+
+# Credentials and Keys (Security)
+*.pem
+*.key
+*.pkcs8
+.env
