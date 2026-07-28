@@ -299,7 +299,7 @@ public class SelfHealingCliService {
                                 break;
                             }
 
-                            currentPatches = nextPatches;
+                            currentPatches = mergePatches(currentPatches, nextPatches);
 
                         } catch (Exception ex) {
                             System.err.println("Error in refinement iteration: " + ex.getMessage());
@@ -412,7 +412,23 @@ public class SelfHealingCliService {
         return true;
     }
 
+    public List<PatchInstruction> mergePatches(List<PatchInstruction> base, List<PatchInstruction> additions) {
+        if (base == null || base.isEmpty()) {
+            return additions != null ? new ArrayList<>(additions) : new ArrayList<>();
+        }
+        if (additions == null || additions.isEmpty()) {
+            return new ArrayList<>(base);
+        }
 
+        Map<String, PatchInstruction> patchMap = new HashMap<>();
+        for (PatchInstruction p : base) {
+            patchMap.put(p.getFilePath(), p);
+        }
+        for (PatchInstruction p : additions) {
+            patchMap.put(p.getFilePath(), p);
+        }
+        return new ArrayList<>(patchMap.values());
+    }
 
     private String getEnvOrProperty(String key) {
         String val = System.getenv(key);
@@ -422,3 +438,4 @@ public class SelfHealingCliService {
         return val;
     }
 }
+

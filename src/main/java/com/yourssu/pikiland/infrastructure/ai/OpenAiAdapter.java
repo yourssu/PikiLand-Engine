@@ -414,7 +414,8 @@ public class OpenAiAdapter implements AiAgentPort {
         return "You are a senior DevOps and fullstack engineer. Analyze error logs and propose patches.\n" +
                 "Use tools to explore directory and files.\n" +
                 "Respond in Korean for all result fields (summary, impact, cause_description, patch_summary, pr_title, pr_body).\n" +
-                "Propose up to 3 PR candidates.";
+                "Propose up to 3 PR candidates.\n" +
+                "CRITICAL MULTI-FILE PATCH RULE: If an issue or error spans multiple files (e.g. source files, caller logic, interface definitions, or test files), you MUST include all relevant file patch instructions in the 'patch_instructions' array for each candidate. Do NOT restrict patches to a single file when multiple files are affected.";
     }
 
     private AiAnalysisResult parseAnalysisResult(String rawResultJson) {
@@ -501,8 +502,9 @@ public class OpenAiAdapter implements AiAgentPort {
         userMsg2.put("content", "The proposed patch failed the test harness.\n" +
                 "Harness Output:\n\n" +
                 "```\n" + harnessFailureLog + "\n```\n\n" +
-                "Analyze the harness failure and failed patch, and propose a new refined patch.");
+                "Analyze the harness failure and failed patch, and propose a new refined patch. If existing file modifications from the previous patch were valid and necessary, preserve them and include the full consolidated list of patch instructions across all affected files in 'patch_instructions'.");
         messages.add(userMsg2);
+
 
         String rawResultJson = null;
         boolean success = false;

@@ -59,4 +59,33 @@ class SelfHealingCliServiceTest {
         System.clearProperty("GITHUB_TOKEN");
         System.clearProperty("GITHUB_REPOSITORY");
     }
+
+    @Test
+    @DisplayName("mergePatches는 이전 패치와 새 보완 패치를 파일 경로 단위로 누적/병합한다")
+    void mergePatches_ConsolidatesMultiFilePatchesCorrectly() {
+        com.yourssu.pikiland.domain.model.PatchInstruction patchA = 
+                new com.yourssu.pikiland.domain.model.PatchInstruction("src/FileA.java", "oldA", "newA");
+        com.yourssu.pikiland.domain.model.PatchInstruction patchB = 
+                new com.yourssu.pikiland.domain.model.PatchInstruction("src/FileB.java", "oldB", "newB");
+        com.yourssu.pikiland.domain.model.PatchInstruction patchAUpdated = 
+                new com.yourssu.pikiland.domain.model.PatchInstruction("src/FileA.java", "oldA", "newA_v2");
+
+        java.util.List<com.yourssu.pikiland.domain.model.PatchInstruction> base = java.util.List.of(patchA);
+        java.util.List<com.yourssu.pikiland.domain.model.PatchInstruction> additions = java.util.List.of(patchB, patchAUpdated);
+
+        java.util.List<com.yourssu.pikiland.domain.model.PatchInstruction> merged = selfHealingCliService.mergePatches(base, additions);
+
+        org.junit.jupiter.api.Assertions.assertEquals(2, merged.size(), "Merged patch list should contain both FileA and FileB");
+
+        com.yourssu.pikiland.domain.model.PatchInstruction mergedA = merged.stream()
+                .filter(p -> p.getFilePath().equals("src/FileA.java"))
+                .findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals("newA_v2", mergedA.getNewCode(), "FileA should be updated to the latest addition code");
+
+        com.yourssu.pikiland.domain.model.PatchInstruction mergedB = merged.stream()
+                .filter(p -> p.getFilePath().equals("src/FileB.java"))
+                .findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals("newB", mergedB.getNewCode(), "FileB should be preserved in merged result");
+    }
 }
+

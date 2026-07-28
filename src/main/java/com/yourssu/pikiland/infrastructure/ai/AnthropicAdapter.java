@@ -66,7 +66,10 @@ public class AnthropicAdapter implements AiAgentPort {
                 "1. **임시 땜질식(Dummy/Workaround) 대처 금지**: 단순히 에러 메시지만 안 나타나게 덮기 위해, 선언되지 않은 객체를 엉뚱한 임시 문자열(\"test\")이나 Null 혹은 스터브(stub) 값으로 성급하게 치환하는 행위를 엄격히 금지합니다.\n" +
                 "2. **근본적이고 안전한 수정**: 클래스나 라이브러리 임포트 누락의 경우, 실제 해당 클래스를 올바르게 임포트하거나 의존성을 매핑해야 합니다. 코드의 제어 흐름에 예외가 발생한다면, 단순히 코드를 지우거나 빈 값으로 덮지 말고 정확한 Null 가드 조건이나 안전한 경계값 처리를 추가하여 로직을 온전하게 작동시켜야 합니다.\n" +
                 "3. **연쇄 영향 파악**: 수정하는 코드가 프로젝트 전체의 연관 비즈니스 흐름이나 다른 파일에 연쇄적인 논리적 장애(Side Effect)를 일으키지 않을지 신중히 분석하십시오.\n" +
-                "4. **해결책의 불명확성 인지**: 로그나 정보가 부족하여 완전하고 근본적인 해결 코드를 제어할 수 없거나, 소스 코드 수정만으로는 불가능한 환경/인프라성 장애인 경우, 절대로 'pr_needed'를 false로 지정하고 'submit_analysis'를 제출하십시오.";
+                "4. **해결책의 불명확성 인지**: 로그나 정보가 부족하여 완전하고 근본적인 해결 코드를 제어할 수 없거나, 소스 코드 수정만으로는 불가능한 환경/인프라성 장애인 경우, 절대로 'pr_needed'를 false로 지정하고 'submit_analysis'를 제출하십시오.\n\n" +
+                "📂 [중요 - 다중 파일 패치 규칙]\n" +
+                "오류나 기능 결함이 여러 소스 파일, 연관 클래스, 인터페이스 또는 테스트 파일에 걸쳐 발생하는 경우, 'patch_instructions' 배열에 관련된 모든 파일의 수정 지시문을 동시에 포함시켜 제안하십시오. 영향을 받는 파일이 여러 개임에도 단일 파일로 제한하지 마십시오.";
+
 
         String userPrompt = "이벤트 유형: " + eventType + "\n\n[분석할 데이터]\n" + logContent;
 
@@ -462,8 +465,9 @@ public class AnthropicAdapter implements AiAgentPort {
         userMsg2.put("content", "제안해주신 패치를 적용하고 테스트 하네스(Harness)를 실행했으나 실패했습니다.\n" +
                 "아래는 테스트 실행 시 발생한 에러 로그입니다:\n\n" +
                 "```\n" + harnessFailureLog + "\n```\n\n" +
-                "테스트 실패 원인과 제안했던 패치 코드를 다시 분석하여, 이를 수정한 새로운 보완 패치(refinement patch)를 제안해 주십시오.");
+                "테스트 실패 원인과 제안했던 패치 코드를 다시 분석하여, 이를 수정한 새로운 보완 패치(refinement patch)를 제안해 주십시오. 만약 기존 파일 수정 내역이 유효하다면 이를 보존하고, 보완된 수정을 포함한 전체 관련 파일 패치 목록을 'patch_instructions' 배열에 종합하여 제출하십시오.");
         messages.add(userMsg2);
+
 
         int fileCount = workspacePort.countSourceFiles(workspace);
         int maxIterations = Math.min(60, 15 + (fileCount / 30));
