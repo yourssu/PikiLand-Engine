@@ -115,7 +115,7 @@ public class AnthropicAdapter implements AiAgentPort {
             headers.set("anthropic-version", "2023-06-01");
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            String url = getEffectiveBaseUrl() + "/messages";
+            String url = buildEndpointUrl(getEffectiveBaseUrl(), "/messages");
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
             if (response.getStatusCode() != HttpStatus.OK) {
@@ -479,10 +479,27 @@ public class AnthropicAdapter implements AiAgentPort {
 
     private String getEffectiveBaseUrl() {
         String envBaseUrl = System.getenv("PIKILAND_AI_BASE_URL");
+        if (envBaseUrl == null || envBaseUrl.isBlank()) {
+            envBaseUrl = System.getenv("ANTHROPIC_BASE_URL");
+        }
         if (envBaseUrl != null && !envBaseUrl.isBlank()) {
             return envBaseUrl;
         }
         return (this.baseUrl != null && !this.baseUrl.isBlank()) ? this.baseUrl : "https://api.anthropic.com/v1";
+    }
+
+    private String buildEndpointUrl(String rawBaseUrl, String endpointSuffix) {
+        if (rawBaseUrl == null || rawBaseUrl.isBlank()) {
+            rawBaseUrl = "https://api.anthropic.com/v1";
+        }
+        String cleanUrl = rawBaseUrl.trim();
+        while (cleanUrl.endsWith("/")) {
+            cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
+        }
+        if (cleanUrl.endsWith(endpointSuffix)) {
+            return cleanUrl;
+        }
+        return cleanUrl + endpointSuffix;
     }
 
     private String getEffectiveApiKey() {

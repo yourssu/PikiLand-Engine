@@ -132,6 +132,12 @@ public class SelfHealingCliService {
 
         // Custom AI Base URL injection if provided
         String customBaseUrl = getEnvOrProperty("PIKILAND_AI_BASE_URL");
+        if (customBaseUrl == null || customBaseUrl.isBlank()) {
+            customBaseUrl = getEnvOrProperty("OPENAI_BASE_URL");
+        }
+        if (customBaseUrl == null || customBaseUrl.isBlank()) {
+            customBaseUrl = getEnvOrProperty("ANTHROPIC_BASE_URL");
+        }
         if (customBaseUrl != null && !customBaseUrl.isBlank()) {
             System.out.println("[AI Gateway] Using Custom Base URL: " + customBaseUrl);
         }
