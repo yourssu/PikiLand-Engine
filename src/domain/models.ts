@@ -1,27 +1,19 @@
 import { z } from "zod";
 
-export const PatchInstructionSchema = z.object({
-  filePath: z.string(),
-  oldCode: z.string(),
-  newCode: z.string(),
-});
-export type PatchInstruction = z.infer<typeof PatchInstructionSchema>;
-
 export const PrCandidateSchema = z.object({
-  patchSummary: z.string(),
-  prTitle: z.string(),
-  prBody: z.string(),
-  patchInstructions: z.array(PatchInstructionSchema),
+  patchSummary: z.string().describe("Description of what this PR patch does"),
+  prTitle: z.string().describe("GitHub PR title for developers"),
+  prBody: z.string().describe("Detailed technical explanation of the fix for developers"),
 });
 export type PrCandidate = z.infer<typeof PrCandidateSchema>;
 
 export const AiAnalysisResultSchema = z.object({
-  isConfident: z.boolean(),
-  summary: z.string(),
-  impact: z.string(),
-  causeDescription: z.string(),
-  prNeeded: z.boolean(),
-  prCandidates: z.array(PrCandidateSchema),
+  isConfident: z.boolean().describe("Whether AI is confident in analysis"),
+  summary: z.string().describe("Easy non-technical summary of the issue for Slack"),
+  impact: z.string().describe("Impact of the issue for non-technical users"),
+  causeDescription: z.string().describe("Technical cause description for developers"),
+  prNeeded: z.boolean().describe("Whether a PR fix is required and possible"),
+  prCandidates: z.array(PrCandidateSchema).describe("List of PR candidates proposed by AI"),
 });
 export type AiAnalysisResult = z.infer<typeof AiAnalysisResultSchema>;
 

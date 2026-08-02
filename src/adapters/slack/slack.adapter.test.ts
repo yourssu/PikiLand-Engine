@@ -17,13 +17,6 @@ describe("SlackAdapter Test", () => {
           patchSummary: "Null 가드 조건 추가",
           prTitle: "fix: add null check in PaymentService",
           prBody: "### 수정 설명\nNPE 발생 원인을 방지하기 위해 null 가드 조건을 추가했습니다.",
-          patchInstructions: [
-            {
-              filePath: "src/PaymentService.ts",
-              oldCode: "if (obj.foo)",
-              newCode: "if (obj && obj.foo)",
-            },
-          ],
         },
       ],
     };

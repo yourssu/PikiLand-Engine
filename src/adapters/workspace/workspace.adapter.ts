@@ -2,10 +2,12 @@ import { execa } from "execa";
 import { simpleGit, SimpleGit } from "simple-git";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { HarnessResult, PatchInstruction } from "../../domain/models";
+import { HarnessResult } from "../../domain/models";
 
-const RESTRICTED_DIRS = [".git", ".venv", "node_modules", "build", "dist", "target", "out"];
-const RESTRICTED_FILES = [".env", "secrets.json", "credentials"];
+const RESTRICTED_DIRS = [".git", ".venv", "node_modules", "build", "dist", "target", "out", ".aws", ".ssh", ".idea", ".vscode"];
+const RESTRICTED_FILES = [".env", "secrets.json", "credentials", "id_rsa", "id_ed25519", "service-account.json", "keystore.jks"];
+const RESTRICTED_EXTENSIONS = [".pem", ".key", ".pfx", ".p12", ".pkcs12"];
+const ALLOWED_ENV_FILES = [".env.example", ".env.sample", ".env.template"];
 const DANGEROUS_SUB_SHELL_PATTERNS = ["$(", "`", "eval ", "exec "];
 
 export class WorkspaceAdapter {
@@ -27,7 +29,20 @@ export class WorkspaceAdapter {
     // 2. Restricted System & Secret Directories/Files Guard
     const parts = relative.split(path.sep);
     for (const part of parts) {
+      if (ALLOWED_ENV_FILES.includes(part)) {
+        continue;
+      }
+
       if (RESTRICTED_DIRS.includes(part) || RESTRICTED_FILES.includes(part)) {
+        return true;
+      }
+
+      if (part.startsWith(".env.")) {
+        return true;
+      }
+
+      const ext = path.extname(part);
+      if (ext && RESTRICTED_EXTENSIONS.includes(ext)) {
         return true;
       }
     }
@@ -82,53 +97,6 @@ export class WorkspaceAdapter {
     await git.clean("f", ["-d"]);
     if (initialRef && initialRef !== "HEAD") {
       await git.checkout(initialRef);
-    }
-  }
-
-  public async applyPatches(workspacePath: string, patches: PatchInstruction[]): Promise<boolean> {
-    try {
-      let appliedCount = 0;
-      for (const patch of patches) {
-        const fullPath = path.isAbsolute(patch.filePath)
-          ? path.resolve(patch.filePath)
-          : path.resolve(workspacePath, patch.filePath);
-
-        if (this.isRestrictedPath(workspacePath, fullPath)) {
-          console.error(`[Workspace] Access Denied: Restricted patch target: ${patch.filePath}`);
-          continue;
-        }
-
-        const dir = path.dirname(fullPath);
-        await fs.mkdir(dir, { recursive: true });
-
-        let fileContent = "";
-        let exists = true;
-        try {
-          fileContent = await fs.readFile(fullPath, "utf-8");
-        } catch {
-          exists = false;
-          fileContent = "";
-        }
-
-        if (!exists) {
-          await fs.writeFile(fullPath, patch.newCode, "utf-8");
-          appliedCount++;
-          continue;
-        }
-
-        const patchedContent = this.applyRobustPatch(fileContent, patch.oldCode, patch.newCode);
-        if (patchedContent !== null) {
-          console.log(`[Workspace] Applying patch to: ${patch.filePath}`);
-          await fs.writeFile(fullPath, patchedContent, "utf-8");
-          appliedCount++;
-        } else {
-          console.error(`[Workspace] Warning: Target oldCode not found in: ${patch.filePath}`);
-        }
-      }
-      return appliedCount > 0 && appliedCount === patches.length;
-    } catch (error) {
-      console.error("[Workspace] Failed to apply patches:", error);
-      return false;
     }
   }
 
@@ -469,29 +437,7 @@ export class WorkspaceAdapter {
     }
   }
 
-  public async getGitDiffPatches(workspacePath: string): Promise<PatchInstruction[]> {
-    try {
-      const git: SimpleGit = simpleGit(workspacePath);
-      const diffSummary = await git.diffSummary();
-      const patches: PatchInstruction[] = [];
 
-      for (const file of diffSummary.files) {
-        if (this.isRestrictedPath(workspacePath, file.file)) continue;
-        const rawDiff = await git.diff(["--", file.file]);
-        if (rawDiff && rawDiff.trim().length > 0) {
-          patches.push({
-            filePath: file.file,
-            oldCode: rawDiff,
-            newCode: rawDiff,
-          });
-        }
-      }
-      return patches;
-    } catch (error) {
-      console.error("[Workspace] Error getting git diff patches:", error);
-      return [];
-    }
-  }
 
   public async getCurrentBranch(workspacePath: string): Promise<string> {
     const git: SimpleGit = simpleGit(workspacePath);

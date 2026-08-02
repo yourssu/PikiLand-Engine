@@ -49,12 +49,26 @@ describe("WorkspaceAdapter Test", () => {
   });
 
   test("should detect restricted paths and block path traversal attempts", () => {
+    // Blocked secret files & envs
     expect(adapter.isRestrictedPath("/app", "/app/.env")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/.env.local")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/.env.production")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/secrets/private.key")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/certs/server.pem")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/.aws/credentials")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/.ssh/id_rsa")).toBeTrue();
     expect(adapter.isRestrictedPath("/app", "/app/node_modules/pkg/index.js")).toBeTrue();
     expect(adapter.isRestrictedPath("/app", "/app/.git/config")).toBeTrue();
     expect(adapter.isRestrictedPath("/app", "/app/../etc/passwd")).toBeTrue();
     expect(adapter.isRestrictedPath("/app", "/etc/passwd")).toBeTrue();
     expect(adapter.isRestrictedPath("/app", "/home/runner/.ssh/id_rsa")).toBeTrue();
+
+    // Allowed template envs & source code files
+    expect(adapter.isRestrictedPath("/app", "/app/.env.example")).toBeFalse();
+    expect(adapter.isRestrictedPath("/app", "/app/.env.sample")).toBeFalse();
+    expect(adapter.isRestrictedPath("/app", "/app/.env.template")).toBeFalse();
+    expect(adapter.isRestrictedPath("/app", "/app/src/PemUtils.java")).toBeFalse();
+    expect(adapter.isRestrictedPath("/app", "/app/src/KeyManager.ts")).toBeFalse();
     expect(adapter.isRestrictedPath("/app", "/app/src/index.ts")).toBeFalse();
     expect(adapter.isRestrictedPath("/app", "/app/tests/unit.test.js")).toBeFalse();
   });

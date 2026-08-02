@@ -5,7 +5,6 @@ import {
   AiAnalysisResult,
   AiAnalysisResultSchema,
   CliConfig,
-  PatchInstruction
 } from "../../domain/models";
 import { WorkspaceAdapter } from "../workspace/workspace.adapter";
 import {
@@ -67,27 +66,22 @@ export class AiAdapter {
     config: CliConfig,
     logContent: string,
     workspacePath: string,
-    previousPatches: PatchInstruction[],
     harnessFailureOutput: string
   ): Promise<AiAnalysisResult> {
     const userPrompt = `PikiLand AI Self-Healing Engine (Ralph Loop Refinement).
-제안했던 패치를 적용하고 테스트 하네스(Harness)를 실행했으나 실패했습니다.
+제공된 파일 도구(edit, write)로 수정한 코드를 적용하고 테스트 하네스(Harness)를 실행했으나 아래와 같이 실패했습니다.
 
 Target Workspace Directory: ${workspacePath}
 
 [Original Error Log]
 ${logContent}
 
-[Previous Applied Patches]
-${JSON.stringify(previousPatches, null, 2)}
-
 [Harness Post-Patch Failure Output]
 ${harnessFailureOutput}
 
 Instructions:
-1. 테스트 실패 원인과 제안했던 패치 코드를 다시 분석하여, 이를 수정한 새로운 보완 패치(refinement patch)를 제안해 주십시오.
-2. 필요하다면 제공된 파일 탐색 도구를 사용하여 실패 원인을 정밀 분석하십시오.
-3. 만약 기존 파일 수정 내역이 유효하다면 이를 보존하고, 보완된 수정을 포함한 전체 관련 파일 패치 목록을 'patchInstructions' 배열에 종합하여 제출하십시오.`;
+1. 테스트 실패 원인과 소스 코드를 재분석하여, OpenCode 파일 도구(read, edit, write)로 워크스페이스 코드를 올바르게 보완 수정하십시오.
+2. 보완 완료 후 최종 결과를 요약하여 제출하십시오.`;
 
     return await this.runAgenticAnalysis(config, userPrompt, workspacePath);
   }
