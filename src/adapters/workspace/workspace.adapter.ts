@@ -221,9 +221,19 @@ export class WorkspaceAdapter {
     branchName: string,
     commitMsg: string,
     token: string,
-    repoFullName: string
+    repoFullName: string,
+    gitUserName?: string,
+    gitUserEmail?: string
   ): Promise<void> {
     const git: SimpleGit = simpleGit(workspacePath);
+
+    const userName = gitUserName || "pikiland-bot[bot]";
+    const userEmail = gitUserEmail || "pikiland-bot[bot]@users.noreply.github.com";
+
+    // Ensure Git author identity is configured for transient Runner environments
+    await git.addConfig("user.name", userName, false, "local");
+    await git.addConfig("user.email", userEmail, false, "local");
+
     await git.checkoutLocalBranch(branchName);
     await git.add(".");
     await git.commit(commitMsg);

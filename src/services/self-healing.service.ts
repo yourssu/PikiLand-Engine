@@ -166,7 +166,15 @@ export class SelfHealingService {
           const branchName = `fix/ai-verified-patch-${Date.now()}`;
           const commitMsg = selectedCandidate.prTitle || "fix: automated AI bug patch";
 
-          await this.workspaceAdapter.commitAndPush(config.workspacePath, branchName, commitMsg, config.token, config.repoName);
+          await this.workspaceAdapter.commitAndPush(
+            config.workspacePath,
+            branchName,
+            commitMsg,
+            config.token,
+            config.repoName,
+            config.gitUserName,
+            config.gitUserEmail
+          );
 
           let detailedPrBody = selectedCandidate.prBody || "";
           if (logContent && logContent.trim().length > 0) {

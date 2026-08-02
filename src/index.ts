@@ -44,6 +44,8 @@ async function main() {
 
   const openAiApiKey = getEnvOrProperty("OPENAI_API_KEY");
   const anthropicApiKey = getEnvOrProperty("ANTHROPIC_API_KEY");
+  const gitUserName = getEnvOrProperty("PIKILAND_GIT_USER_NAME");
+  const gitUserEmail = getEnvOrProperty("PIKILAND_GIT_USER_EMAIL");
 
   if (!eventType) {
     console.error("Error: PIKILAND_EVENT_TYPE environment variable is required.");
@@ -73,6 +75,8 @@ async function main() {
     maxRetries,
     openAiApiKey,
     anthropicApiKey,
+    gitUserName,
+    gitUserEmail,
   };
 
   const service = new SelfHealingService();

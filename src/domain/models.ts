@@ -38,4 +38,6 @@ export interface CliConfig {
   readonly maxRetries: number;
   readonly openAiApiKey?: string;
   readonly anthropicApiKey?: string;
+  readonly gitUserName?: string;
+  readonly gitUserEmail?: string;
 }
