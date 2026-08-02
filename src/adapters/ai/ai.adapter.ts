@@ -130,15 +130,19 @@ Instructions:
       const fileCount = await this.workspaceAdapter.countSourceFiles(workspacePath);
       const maxSteps = Math.min(60, 15 + Math.floor(fileCount / 30));
       console.log(`[AI Adapter] Dynamic maxSteps cap calculated: ${maxSteps} (for ~${fileCount} workspace files)`);
+      console.log(`[AI Adapter] Starting agentic investigation loop...`);
 
-      // Step 1: Agentic loop with tools to gather context
+      // Step 1: Agentic loop with tools to gather context & modify code with 3-min timeout guard
       const { text: agenticContext } = await generateText({
         model: modelProvider,
         system: KOREAN_SYSTEM_PROMPT,
         prompt,
         tools,
         maxSteps,
+        abortSignal: AbortSignal.timeout(180000),
       });
+
+      console.log(`[AI Adapter] Agentic loop completed. Generating structured output...`);
 
       // Step 2: Generate final structured analysis result based on gathered context
       const structuredPrompt = `${prompt}\n\n[Agent Investigation Findings & Context]\n${agenticContext}`;
@@ -147,6 +151,7 @@ Instructions:
         schema: AiAnalysisResultSchema,
         system: KOREAN_SYSTEM_PROMPT,
         prompt: structuredPrompt,
+        abortSignal: AbortSignal.timeout(180000),
       });
 
       return object;

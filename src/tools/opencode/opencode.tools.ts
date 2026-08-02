@@ -19,6 +19,7 @@ export const createOpencodeReadTool = (workspaceAdapter: WorkspaceAdapter, works
       filePath: z.string().describe("Relative file path from project workspace root (e.g. 'src/index.ts')."),
     }),
     execute: async ({ filePath }) => {
+      console.log(`   [Agent Tool Call] read: ${filePath}`);
       return await workspaceAdapter.readFile(workspacePath, filePath);
     },
   });
@@ -37,6 +38,7 @@ export const createOpencodeEditTool = (workspaceAdapter: WorkspaceAdapter, works
       newContent: z.string().describe("New content block to insert."),
     }),
     execute: async ({ filePath, oldContent, newContent }) => {
+      console.log(`   [Agent Tool Call] edit: ${filePath}`);
       return await workspaceAdapter.editFile(workspacePath, filePath, oldContent, newContent);
     },
   });
@@ -53,6 +55,7 @@ export const createOpencodeWriteTool = (workspaceAdapter: WorkspaceAdapter, work
       content: z.string().describe("Full source code content to write."),
     }),
     execute: async ({ filePath, content }) => {
+      console.log(`   [Agent Tool Call] write: ${filePath}`);
       return await workspaceAdapter.writeFile(workspacePath, filePath, content);
     },
   });
@@ -69,6 +72,7 @@ export const createOpencodeListTool = (workspaceAdapter: WorkspaceAdapter, works
     }),
     execute: async ({ dirPath }) => {
       const targetDir = dirPath || ".";
+      console.log(`   [Agent Tool Call] list: ${targetDir}`);
       return await workspaceAdapter.listDirectory(workspacePath, targetDir);
     },
   });
@@ -85,6 +89,7 @@ export const createOpencodeGrepTool = (workspaceAdapter: WorkspaceAdapter, works
       query: z.string().describe("Exact term or symbol to search for."),
     }),
     execute: async ({ filePath, query }) => {
+      console.log(`   [Agent Tool Call] grep: ${filePath} (query: '${query}')`);
       return await workspaceAdapter.grepInFile(workspacePath, filePath, query);
     },
   });
