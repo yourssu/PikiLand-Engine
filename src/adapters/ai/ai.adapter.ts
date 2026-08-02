@@ -1,7 +1,6 @@
-import { generateText, generateObject, tool } from "ai";
+import { generateText, generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { z } from "zod";
 import {
   AiAnalysisResult,
   AiAnalysisResultSchema,
@@ -9,10 +8,17 @@ import {
   PatchInstruction
 } from "../../domain/models";
 import { WorkspaceAdapter } from "../workspace/workspace.adapter";
+import {
+  createOpencodeReadTool,
+  createOpencodeEditTool,
+  createOpencodeWriteTool,
+  createOpencodeListTool,
+  createOpencodeGrepTool,
+} from "../../tools/opencode/opencode.tools";
 
 const KOREAN_SYSTEM_PROMPT = `당신은 시니어 데브옵스(DevOps) 엔지니어이자 풀스택 소프트웨어 엔지니어입니다. 제공되는 로그 또는 이슈 데이터를 분석하여, 에러의 해결 방안과 자동 패치 여부를 결정해야 합니다.
 
-당신은 오류의 맥락을 정확히 이해하기 위해 프로젝트 워크스페이스의 디렉토리와 파일을 탐색할 수 있는 도구(listDirectory, readFileContent, grepInFile)를 적극 활용할 수 있습니다.
+당신은 오류의 맥락을 정확히 이해하고 소스코드를 직접 수정하기 위해 프로젝트 워크스페이스 도구(read, edit, write, list, grep)를 적극 활용할 수 있습니다.
 
 🌐 [언어 규칙]
 모든 응답 필드('summary', 'impact', 'causeDescription', 'patchSummary', 'prTitle', 'prBody')는 반드시 **한국어**로만 작성하십시오.
@@ -36,8 +42,9 @@ const KOREAN_SYSTEM_PROMPT = `당신은 시니어 데브옵스(DevOps) 엔지니
 3. **연쇄 영향 파악**: 수정하는 코드가 프로젝트 전체의 연관 비즈니스 흐름이나 다른 파일에 연쇄적인 논리적 장애(Side Effect)를 일으키지 않을지 신중히 분석하십시오.
 4. **해결책의 불명확성 인지**: 로그나 정보가 부족하여 완전하고 근본적인 해결 코드를 제어할 수 없거나, 소스 코드 수정만으로는 불가능한 환경/인프라성 장애인 경우, 절대로 'prNeeded'를 false로 지정하십시오.
 
-📂 [중요 - 다중 파일 패치 규칙]
-오류나 기능 결함이 여러 소스 파일, 연관 클래스, 인터페이스 또는 테스트 파일에 걸쳐 발생하는 경우, 'patchInstructions' 배열에 관련된 모든 파일의 수정 지시문을 동시에 포함시켜 제안하십시오. 영향을 받는 파일이 여러 개임에도 단일 파일로 제한하지 마십시오.`;
+📂 [중요 - 다중 파일 및 oldCode 패치 정확도 규칙]
+1. 오류나 기능 결함이 여러 소스 파일에 걸쳐 발생하는 경우, 'patchInstructions' 배열에 관련된 모든 파일의 수정 지시문을 동시에 포함시켜 제안하십시오.
+2. **'oldCode' 작성 시 원본 100% 일치 필수**: 'oldCode'는 추측하거나 축약(...)하지 말고, 반드시 제공된 'readFileContent' 도구를 통해 원본 소스 파일을 직접 읽은 후 교체하고자 하는 원본 코드 블록을 줄바꿈, 공백, 주석까지 **토씨 하나 틀리지 않고 100% 그대로 복사**하여 지정하십시오. 원본 코드와 일치하지 않으면 패치 적용에 실패합니다.`;
 
 export class AiAdapter {
   private workspaceAdapter: WorkspaceAdapter;
@@ -112,38 +119,11 @@ Instructions:
     const modelProvider = this.getModel(config);
 
     const tools = {
-      listDirectory: tool({
-        description: "Lists subdirectories and files in a single-level folder path inside the project workspace.",
-        parameters: z.object({
-          directoryPath: z.string().describe("Relative directory path from project root (e.g. '.', 'src'). Defaults to '.'."),
-        }),
-        execute: async ({ directoryPath }) => {
-          const targetDir = directoryPath || ".";
-          console.log(`   [Agent Tool Call] listDirectory: ${targetDir}`);
-          return await this.workspaceAdapter.listDirectory(workspacePath, targetDir);
-        },
-      }),
-      readFileContent: tool({
-        description: "Reads the source code content of a specific file in the workspace.",
-        parameters: z.object({
-          filePath: z.string().describe("Relative file path from project root (e.g. 'src/index.ts')."),
-        }),
-        execute: async ({ filePath }) => {
-          console.log(`   [Agent Tool Call] readFileContent: ${filePath}`);
-          return await this.workspaceAdapter.readFile(workspacePath, filePath);
-        },
-      }),
-      grepInFile: tool({
-        description: "Searches for a specific query or symbol inside a single file.",
-        parameters: z.object({
-          filePath: z.string().describe("Relative file path from project root."),
-          query: z.string().describe("The exact term or symbol to search for."),
-        }),
-        execute: async ({ filePath, query }) => {
-          console.log(`   [Agent Tool Call] grepInFile: ${filePath} (query: '${query}')`);
-          return await this.workspaceAdapter.grepInFile(workspacePath, filePath, query);
-        },
-      }),
+      read: createOpencodeReadTool(this.workspaceAdapter, workspacePath),
+      edit: createOpencodeEditTool(this.workspaceAdapter, workspacePath),
+      write: createOpencodeWriteTool(this.workspaceAdapter, workspacePath),
+      list: createOpencodeListTool(this.workspaceAdapter, workspacePath),
+      grep: createOpencodeGrepTool(this.workspaceAdapter, workspacePath),
     };
 
     try {

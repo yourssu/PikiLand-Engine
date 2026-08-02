@@ -139,3 +139,11 @@ cp .env.example .env
 | [Deployment Guide](docs/DEPLOYMENT.md) | 어떻게 배포하고 설정하는가?             |
 | [Competitive Research](docs/COMPETITORS.md) | 기존 제품과 무엇이 다른가?              |
 | [Future Ideas](docs/FUTURE_IDEAS.md) | MVP 이후 무엇을 다시 검토할 것인가?     |
+
+## 📄 Open Source Licenses & Attributions
+
+PikiLand Engine incorporates open-source file manipulation tools ported from **[OpenCode](https://github.com/anomalyco/opencode)**:
+- **Component**: OpenCode File Tools (`read`, `write`, `edit`, `list`, `grep`)
+- **Copyright**: Copyright (c) anomalyco/opencode
+- **License**: [MIT License](https://opensource.org/licenses/MIT)
+

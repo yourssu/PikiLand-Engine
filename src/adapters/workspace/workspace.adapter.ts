@@ -17,10 +17,14 @@ export class WorkspaceAdapter {
   public isRestrictedPath(workspacePath: string, targetPath: string): boolean {
     const normWorkspace = path.resolve(workspacePath);
     const normTarget = path.resolve(targetPath);
-    if (!normTarget.startsWith(normWorkspace)) {
+    
+    // 1. Path Traversal Guard: Block any access outside workspace root
+    const relative = path.relative(normWorkspace, normTarget);
+    if (relative.startsWith("..") || path.isAbsolute(relative) || !normTarget.startsWith(normWorkspace)) {
       return true;
     }
-    const relative = path.relative(normWorkspace, normTarget);
+
+    // 2. Restricted System & Secret Directories/Files Guard
     const parts = relative.split(path.sep);
     for (const part of parts) {
       if (RESTRICTED_DIRS.includes(part) || RESTRICTED_FILES.includes(part)) {
@@ -151,7 +155,48 @@ export class WorkspaceAdapter {
     }
 
     // Step 3: Line-by-Line Trimmed Matching
-    return this.replaceByTrimmedLines(content, oldCode, newCode);
+    const trimmedMatch = this.replaceByTrimmedLines(content, oldCode, newCode);
+    if (trimmedMatch !== null) {
+      return trimmedMatch;
+    }
+
+    // Step 4: Sub-block Anchor Line Matching (Fallback for AI hallucinated whitespace/comments)
+    return this.replaceByAnchorMatching(content, oldCode, newCode);
+  }
+
+  private replaceByAnchorMatching(content: string, oldCode: string, newCode: string): string | null {
+    const hasCrlf = content.includes("\r\n");
+    const contentLines = content.split(/\r?\n/);
+    const oldLines = oldCode.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+
+    if (oldLines.length === 0) return null;
+
+    const firstAnchor = oldLines[0]!;
+    const lastAnchor = oldLines[oldLines.length - 1]!;
+
+    for (let startIdx = 0; startIdx < contentLines.length; startIdx++) {
+      if (contentLines[startIdx]!.trim() === firstAnchor) {
+        const searchUpperLimit = Math.min(contentLines.length, startIdx + oldLines.length + 15);
+        for (let endIdx = startIdx; endIdx < searchUpperLimit; endIdx++) {
+          if (contentLines[endIdx]!.trim() === lastAnchor) {
+            const newContentLines: string[] = [];
+            for (let i = 0; i < startIdx; i++) {
+              newContentLines.push(contentLines[i]!);
+            }
+            const replacementLines = newCode.split(/\r?\n/);
+            for (const line of replacementLines) {
+              newContentLines.push(line);
+            }
+            for (let i = endIdx + 1; i < contentLines.length; i++) {
+              newContentLines.push(contentLines[i]!);
+            }
+            const delimiter = hasCrlf ? "\r\n" : "\n";
+            return newContentLines.join(delimiter);
+          }
+        }
+      }
+    }
+    return null;
   }
 
   private replaceByTrimmedLines(content: string, oldCode: string, newCode: string): string | null {
@@ -372,6 +417,79 @@ export class WorkspaceAdapter {
       return `[Matches in ${relativePath} for '${query}']:\n${matches.join("\n")}`;
     } catch (e: unknown) {
       return `Error searching file: ${(e as Error).message || e}`;
+    }
+  }
+
+  public async writeFile(workspacePath: string, relativePath: string, content: string): Promise<string> {
+    try {
+      const normWorkspace = path.resolve(workspacePath);
+      const targetFile = path.resolve(normWorkspace, relativePath);
+      if (this.isRestrictedPath(workspacePath, targetFile)) {
+        return "Access Denied: Restricted file path.";
+      }
+      await fs.mkdir(path.dirname(targetFile), { recursive: true });
+      await fs.writeFile(targetFile, content, "utf-8");
+      return `Successfully written file: ${relativePath}`;
+    } catch (e: unknown) {
+      return `Error writing file: ${(e as Error).message || e}`;
+    }
+  }
+
+  public async editFile(workspacePath: string, relativePath: string, oldContent: string, newContent: string): Promise<string> {
+    try {
+      const normWorkspace = path.resolve(workspacePath);
+      const targetFile = path.resolve(normWorkspace, relativePath);
+      if (this.isRestrictedPath(workspacePath, targetFile)) {
+        return "Access Denied: Restricted file path.";
+      }
+
+      let content = "";
+      let exists = true;
+      try {
+        content = await fs.readFile(targetFile, "utf-8");
+      } catch {
+        exists = false;
+      }
+
+      if (!exists) {
+        await fs.mkdir(path.dirname(targetFile), { recursive: true });
+        await fs.writeFile(targetFile, newContent, "utf-8");
+        return `Successfully created new file: ${relativePath}`;
+      }
+
+      const patched = this.applyRobustPatch(content, oldContent, newContent);
+      if (patched !== null) {
+        await fs.writeFile(targetFile, patched, "utf-8");
+        return `Successfully edited ${relativePath}`;
+      }
+
+      return `Error: Could not locate 'oldContent' in ${relativePath}. Please use 'read' tool to inspect the exact line content before retrying.`;
+    } catch (e: unknown) {
+      return `Error editing file: ${(e as Error).message || e}`;
+    }
+  }
+
+  public async getGitDiffPatches(workspacePath: string): Promise<PatchInstruction[]> {
+    try {
+      const git: SimpleGit = simpleGit(workspacePath);
+      const diffSummary = await git.diffSummary();
+      const patches: PatchInstruction[] = [];
+
+      for (const file of diffSummary.files) {
+        if (this.isRestrictedPath(workspacePath, file.file)) continue;
+        const rawDiff = await git.diff(["--", file.file]);
+        if (rawDiff && rawDiff.trim().length > 0) {
+          patches.push({
+            filePath: file.file,
+            oldCode: rawDiff,
+            newCode: rawDiff,
+          });
+        }
+      }
+      return patches;
+    } catch (error) {
+      console.error("[Workspace] Error getting git diff patches:", error);
+      return [];
     }
   }
 

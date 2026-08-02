@@ -40,10 +40,23 @@ describe("WorkspaceAdapter Test", () => {
     expect(result).toContain("const x = 2;");
   });
 
-  test("should detect restricted paths", () => {
+  test("should apply anchor matching patch when AI hallucinated middle comments or whitespace", () => {
+    const content = "function processData() {\n  // Original comment\n  const value = getData();\n  return value;\n}";
+    const oldCode = "function processData() {\n  // Hallucinated comment\n  return value;\n}";
+    const newCode = "function processData() {\n  const value = getFixedData();\n  return value;\n}";
+    const result = adapter.applyRobustPatch(content, oldCode, newCode);
+    expect(result).toContain("getFixedData()");
+  });
+
+  test("should detect restricted paths and block path traversal attempts", () => {
     expect(adapter.isRestrictedPath("/app", "/app/.env")).toBeTrue();
     expect(adapter.isRestrictedPath("/app", "/app/node_modules/pkg/index.js")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/.git/config")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/app/../etc/passwd")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/etc/passwd")).toBeTrue();
+    expect(adapter.isRestrictedPath("/app", "/home/runner/.ssh/id_rsa")).toBeTrue();
     expect(adapter.isRestrictedPath("/app", "/app/src/index.ts")).toBeFalse();
+    expect(adapter.isRestrictedPath("/app", "/app/tests/unit.test.js")).toBeFalse();
   });
 
   test("should count source files excluding restricted dirs", async () => {

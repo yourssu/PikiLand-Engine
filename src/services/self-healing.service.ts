@@ -115,7 +115,13 @@ export class SelfHealingService {
 
         let currentPatches = candidate.patchInstructions;
         if (!currentPatches || currentPatches.length === 0) {
-          continue;
+          const autoDiffPatches = await this.workspaceAdapter.getGitDiffPatches(config.workspacePath);
+          if (autoDiffPatches && autoDiffPatches.length > 0) {
+            console.log(`[Workspace] Auto-captured ${autoDiffPatches.length} patch(es) from OpenCode tool modifications.`);
+            currentPatches = autoDiffPatches;
+          } else {
+            continue;
+          }
         }
 
         const triedPatches: PatchInstruction[][] = [];
