@@ -115,11 +115,12 @@ Instructions:
       listDirectory: tool({
         description: "Lists subdirectories and files in a single-level folder path inside the project workspace.",
         parameters: z.object({
-          directoryPath: z.string().describe("Relative directory path from project root (e.g. '.', 'src'). Defaults to '.'.").default("."),
+          directoryPath: z.string().describe("Relative directory path from project root (e.g. '.', 'src'). Defaults to '.'."),
         }),
         execute: async ({ directoryPath }) => {
-          console.log(`   [Agent Tool Call] listDirectory: ${directoryPath}`);
-          return await this.workspaceAdapter.listDirectory(workspacePath, directoryPath);
+          const targetDir = directoryPath || ".";
+          console.log(`   [Agent Tool Call] listDirectory: ${targetDir}`);
+          return await this.workspaceAdapter.listDirectory(workspacePath, targetDir);
         },
       }),
       readFileContent: tool({
