@@ -96,12 +96,15 @@ export class GithubAdapter {
       throw new Error(`Invalid repository full name format: ${repoFullName}`);
     }
 
+    const footer = `\n\n---\nAuthored by PikiLand Engine`;
+    const fullBody = body.includes("Authored by PikiLand Engine") ? body : `${body}${footer}`;
+
     const octokit = this.getOctokit(token);
     const response = await octokit.rest.pulls.create({
       owner,
       repo,
       title,
-      body,
+      body: fullBody,
       head: headBranch,
       base: baseBranch,
     });
