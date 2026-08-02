@@ -1,39 +1,38 @@
-# Legacy Python
-.venv
-__pycache__
+# Node & Bun
+node_modules/
+dist/
+out/
+coverage/
+*.tsbuildinfo
 
-# Gradle
-.gradle/
-build/
-.gradletasknamecache
+# Binary Builds
+pikiland-cli
+
+# Environment & Credentials (Security)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.pkcs8
+secrets.json
+credentials
 
 # IDEs and Editors
 .idea/
+.vscode/
 *.iml
 *.iws
 *.ipr
-.vscode/
-.settings/
-.classpath
-.project
-.factorypath
-.metadata/
+*.swp
+*.swo
 
 # Operating Systems
 .DS_Store
 Thumbs.db
 
-# Local database (H2 file-based DB)
-data/
-*.mv.db
-*.trace.db
-*.db
-
-# Temporary files and logs
+# Logs & Temp Files
 *.log
-
-# Credentials and Keys (Security)
-*.pem
-*.key
-*.pkcs8
-.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
