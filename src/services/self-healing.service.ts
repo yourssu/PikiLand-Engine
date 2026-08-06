@@ -84,7 +84,7 @@ export class SelfHealingService {
       if (hResBefore.success) {
         console.error("[Harness] Bug reproduction FAILED: Tests passed on buggy workspace (Red verification failed).");
         console.error("[Harness] Discarding patching process as issue is not reproducible.");
-        return;
+        throw new Error("Self-healing failed: Issue is not reproducible on current workspace.");
       }
       console.log("[Harness] Bug reproduction SUCCEEDED: Tests failed as expected on buggy workspace. Proceeding to patch generation.");
     }
@@ -163,7 +163,8 @@ export class SelfHealingService {
       // Publish PR directly from verified workspace
       if (isVerified) {
         try {
-          const branchName = `fix/ai-verified-patch-${Date.now()}`;
+          const hashTag = config.fingerprintHash ? config.fingerprintHash.trim() : `${Date.now()}`;
+          const branchName = `pikiland/fix-${hashTag}`;
           const commitMsg = selectedCandidate.prTitle || "fix: automated AI bug patch";
 
           await this.workspaceAdapter.commitAndPush(
@@ -177,6 +178,9 @@ export class SelfHealingService {
           );
 
           let detailedPrBody = selectedCandidate.prBody || "";
+          if (config.fingerprintHash) {
+            detailedPrBody += `\n\nPikiLand Incident Fingerprint: ${config.fingerprintHash}`;
+          }
           if (logContent && logContent.trim().length > 0) {
             detailedPrBody += `\n\n---\n\n<details>\n<summary>🔍 원본 에러 로그 및 발생 Context 보기</summary>\n\n\`\`\`\n${logContent}\n\`\`\`\n</details>`;
           }
@@ -193,13 +197,21 @@ export class SelfHealingService {
           if (prUrl) {
             prUrls.push(prUrl);
             console.log(`Successfully created Single Best Verified PR: ${prUrl}`);
+          } else {
+            throw new Error("GitHub API returned null PR URL");
           }
-        } catch (ex) {
-          console.error("Failed to create PR for verified candidate:", ex);
+        } catch (ex: unknown) {
+          const err = ex as Error;
+          console.error("Failed to create PR for verified candidate:", err);
+          throw new Error(`Self-healing failed to create PR: ${err.message || err}`);
         }
       } else {
-        console.log("No PR candidates passed harness verification. No PR was created.");
+        console.error("No PR candidates passed harness verification. No PR was created.");
+        throw new Error("Self-healing failed: No PR candidates passed harness verification.");
       }
+    } else {
+      console.error("AI determined no PR fix is required or possible.");
+      throw new Error("Self-healing failed: AI analysis determined no PR fix is required or possible.");
     }
 
     // 4. Slack Notification

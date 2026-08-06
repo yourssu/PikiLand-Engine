@@ -37,6 +37,7 @@ async function main() {
   const customBaseUrl = getEnvOrProperty("PIKILAND_AI_BASE_URL") || getEnvOrProperty("OPENAI_BASE_URL") || getEnvOrProperty("ANTHROPIC_BASE_URL");
   const slackWebhookUrl = getEnvOrProperty("SLACK_WEBHOOK_URL");
   const runId = getEnvOrProperty("PIKILAND_RUN_ID");
+  const fingerprintHash = getEnvOrProperty("PIKILAND_FINGERPRINT_HASH") || runId;
   const harnessCmd = getEnvOrProperty("PIKILAND_HARNESS_CMD");
   const targetBranch = getEnvOrProperty("PIKILAND_TARGET_BRANCH");
   const maxRetriesStr = getEnvOrProperty("PIKILAND_RALPH_MAX_RETRIES") || "3";
@@ -70,6 +71,7 @@ async function main() {
     customBaseUrl,
     slackWebhookUrl,
     runId,
+    fingerprintHash,
     harnessCmd,
     targetBranch,
     maxRetries,
