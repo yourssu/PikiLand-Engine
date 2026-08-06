@@ -33,6 +33,7 @@ export interface CliConfig {
   readonly customBaseUrl?: string;
   readonly slackWebhookUrl?: string;
   readonly runId?: string;
+  readonly fingerprintHash?: string;
   readonly harnessCmd?: string;
   readonly targetBranch?: string;
   readonly maxRetries: number;

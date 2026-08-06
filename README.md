@@ -107,15 +107,25 @@ cp .env.example .env
 | 변수 | 용도 및 설명 | 필수 여부 |
 | --- | --- | :---: |
 | `PIKILAND_CLI` | PikiLand를 CLI 모드로 실행하기 위한 활성화 플래그 | 필수 |
-| `PIKILAND_EVENT_TYPE` | 워크플로가 감지한 원래 이벤트 유형 (예: `workflow_run`, `issues`) | 필수 |
+| `PIKILAND_EVENT_TYPE` | 워크플로가 감지한 원래 이벤트 유형 (예: `workflow_run`, `issues`, `production_log`) | 필수 |
 | `PIKILAND_LOG_CONTENT` | 분석 대상이 될 정제된 에러 로그 또는 이슈 내용 | 필수 |
 | `GITHUB_TOKEN` | GitHub API 통신 및 PR 생성을 위한 권한 토큰 | 필수 |
 | `GITHUB_REPOSITORY` | 대상 리포지토리명 (형식: `owner/repo`) | 필수 |
 | `PIKILAND_WORKSPACE_PATH` | 코드 분석 및 패치를 적용할 대상 워크스페이스 디렉토리 경로 (기본값: `.`) | 선택 |
 | `PIKILAND_RUN_ID` | 해당 분석 실행에 매핑되는 워크플로 실행 ID 또는 이슈 번호 | 선택 |
+| `PIKILAND_FINGERPRINT_HASH` | 프로덕션 에러 인시던트를 고유 추적하기 위한 SHA-256 핑거프린트 Hash | 선택 |
 | `PIKILAND_TARGET_BRANCH` | 패치를 적용하여 PR을 제출할 타겟 브랜치 | 선택 |
 | `GITHUB_REF_NAME` | 타겟 브랜치의 Fallback (기본 브랜치명) | 선택 |
 | `SLACK_WEBHOOK_URL` | 결과를 전송할 Slack Webhook 수신자 URL | 선택 |
+
+### PikiLand Engine 실행 및 연동 계약 (Engine CLI Exit Code & PR Contract)
+
+- **Exit Code 1 종료 계약**: 
+  패치 검증 실패, 버그 재현 실패, LLM 연결 에러 또는 Verified PR이 최종 생성되지 못한 경우 PikiLand CLI 엔진은 반드시 `process.exit(1)`로 종료하여 GitHub Actions Workflow 상태를 `failure`로 만듭니다. 이를 통해 PikiLand Web App이 대시보드 에러 인시던트 현황판 상태를 `FAILED`로 자동 반영합니다.
+- **PR 브랜치 및 메타데이터 태그 작성 규칙**:
+  - 생성 브랜치명 포맷: `pikiland/fix-${fingerprintHash}`
+  - PR 본문 메타데이터 태그: `PikiLand Incident Fingerprint: ${fingerprintHash}`
+  - 이 메타데이터를 기반으로 PikiLand Web App의 `WebhookAppService`가 Webhook 수신 시 인시던트 상태를 `PR_CREATED` 및 `RESOLVED`로 자동 갱신합니다.
 
 * **`PIKILAND_LOG_CONTENT` (분석 대상 로그)**: 
   AI 모델이 진단할 핵심 데이터입니다. `workflow_run` 실패 시에는 웹앱이 원본 빌드 로그를 가져와 에러 프레임/스택 트레이스 위주로 정제(Log Truncation)한 내용이 주입되며, `issues` 이벤트 시에는 작성된 이슈 본문(Body) 전체가 주입됩니다. 이 데이터는 AI의 프롬프트 입력값으로 사용됩니다.
