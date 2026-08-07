@@ -93,3 +93,41 @@ export const createOpencodeGrepTool = (workspaceAdapter: WorkspaceAdapter, works
       return await workspaceAdapter.grepInFile(workspacePath, filePath, query);
     },
   });
+
+/**
+ * Ported from OpenCode (https://github.com/anomalyco/opencode)
+ * OpenCode Bash Tool: Executes shell commands inside the workspace directory.
+ * OpenAI Strict Schema compliant.
+ */
+export const createOpencodeBashTool = (workspaceAdapter: WorkspaceAdapter, workspacePath: string) =>
+  tool({
+    description: "Executes a shell command in the project workspace directory (e.g. './gradlew test', 'npm test', 'git status', 'find .'). Stdout and stderr are returned directly to you (AI) and hidden from runner console logs.",
+    parameters: z.object({
+      command: z.string().describe("Exact shell command line to execute inside the workspace directory."),
+      description: z.string().nullable().describe("Short explanation of why you are running this command (or null)."),
+      timeoutSeconds: z.number().nullable().describe("Execution timeout in seconds (or null for default 60s)."),
+    }),
+    execute: async ({ command, description, timeoutSeconds }) => {
+      console.log(`   [Agent Tool Call] bash: ${command.substring(0, 80)}${description ? ` (${description})` : ""}`);
+      return await workspaceAdapter.runBashCommand(workspacePath, command, timeoutSeconds || 60);
+    },
+  });
+
+/**
+ * Ported from OpenCode (https://github.com/anomalyco/opencode)
+ * OpenCode Manage Task Tool: Manages background shell tasks and processes (list, status, kill, pkill).
+ * OpenAI Strict Schema compliant.
+ */
+export const createOpencodeManageTaskTool = (workspaceAdapter: WorkspaceAdapter) =>
+  tool({
+    description: "Manages background shell tasks and processes launched in the workspace. Supports listing running tasks ('list'), checking status ('status'), killing by taskId ('kill'), or killing by process pattern/name ('pkill').",
+    parameters: z.object({
+      action: z.enum(["list", "status", "kill", "pkill"]).describe("Action to perform on background tasks or processes."),
+      taskId: z.string().nullable().describe("Task ID string required for status or kill action (null for list/pkill)."),
+      pattern: z.string().nullable().describe("Process name or pattern required for pkill action (e.g. 'node server.js', 'gradlew')."),
+    }),
+    execute: async ({ action, taskId, pattern }) => {
+      console.log(`   [Agent Tool Call] manage_task: action='${action}', taskId='${taskId}', pattern='${pattern}'`);
+      return await workspaceAdapter.manageTask(action, taskId, pattern);
+    },
+  });

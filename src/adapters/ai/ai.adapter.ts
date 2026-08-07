@@ -13,11 +13,14 @@ import {
   createOpencodeWriteTool,
   createOpencodeListTool,
   createOpencodeGrepTool,
+  createOpencodeBashTool,
+  createOpencodeManageTaskTool,
 } from "../../tools/opencode/opencode.tools";
 
 const KOREAN_SYSTEM_PROMPT = `당신은 시니어 데브옵스(DevOps) 엔지니어이자 풀스택 소프트웨어 엔지니어입니다. 제공되는 로그 또는 이슈 데이터를 분석하여, 에러의 해결 방안과 자동 패치 여부를 결정해야 합니다.
 
-당신은 오류의 맥락을 정확히 이해하고 소스코드를 직접 수정하기 위해 프로젝트 워크스페이스 도구(read, edit, write, list, grep)를 적극 활용할 수 있습니다.
+당신은 오류의 맥락을 정확히 이해하고 소스코드를 직접 수정하기 위해 프로젝트 워크스페이스 도구(read, edit, write, list, grep, bash, manage_task)를 적극 활용할 수 있습니다.
+프로덕션 에러 로그나 동적 동작 장애를 분석할 때, 'bash' 도구를 활용하여 프로젝트 빌드/테스트 명령어('./gradlew test', 'npm test' 등)나 진단 명령어('git status', 'find' 등)를 직접 실행하고 에러의 원인을 정확하게 추적하십시오. 백그라운드 태스크나 실행 중인 프로세스의 관리가 필요한 경우 'manage_task' 도구('list', 'status', 'kill', 'pkill')를 적극 활용하십시오. 'bash' 도구의 출력(stdout, stderr)은 당신에게만 전달됩니다.
 
 🌐 [언어 규칙]
 모든 응답 필드('summary', 'impact', 'causeDescription', 'prTitle', 'prBody', 'prNotNeededReason', 'issueTitle', 'issueBody')는 반드시 **한국어**로만 작성하십시오.
@@ -125,6 +128,8 @@ Instructions:
       write: createOpencodeWriteTool(this.workspaceAdapter, workspacePath),
       list: createOpencodeListTool(this.workspaceAdapter, workspacePath),
       grep: createOpencodeGrepTool(this.workspaceAdapter, workspacePath),
+      bash: createOpencodeBashTool(this.workspaceAdapter, workspacePath),
+      manage_task: createOpencodeManageTaskTool(this.workspaceAdapter),
     };
 
     try {

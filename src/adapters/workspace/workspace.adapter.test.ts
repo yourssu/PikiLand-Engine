@@ -77,5 +77,32 @@ describe("WorkspaceAdapter Test", () => {
     const count = await adapter.countSourceFiles(".");
     expect(count).toBeGreaterThan(0);
   });
+
+  test("should block dangerous bash commands with pinpoint rules", async () => {
+    const resRm = await adapter.runBashCommand(".", "rm -rf /");
+    expect(resRm.exitCode).toBe(1);
+    expect(resRm.stderr).toContain("Security Guard");
+
+    const resEnv = await adapter.runBashCommand(".", "cat .env");
+    expect(resEnv.exitCode).toBe(1);
+    expect(resEnv.stderr).toContain("Security Guard");
+  });
+
+  test("should execute normal bash commands quietly and return stdout to AI", async () => {
+    const res = await adapter.runBashCommand(".", "echo 'hello pikiland'");
+    expect(res.exitCode).toBe(0);
+    expect(res.stdout).toContain("hello pikiland");
+  });
+
+  test("should handle manageTask list, status, kill and pkill actions", async () => {
+    const listRes = await adapter.manageTask("list", null, null);
+    expect(listRes).toContain("No active background tasks");
+
+    const statusErr = await adapter.manageTask("status", null, null);
+    expect(statusErr).toContain("Error: taskId is required");
+
+    const pkillRes = await adapter.manageTask("pkill", null, "non_existent_process_123456");
+    expect(typeof pkillRes).toBe("string");
+  });
 });
 

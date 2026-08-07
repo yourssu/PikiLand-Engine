@@ -454,6 +454,113 @@ export class WorkspaceAdapter {
     const summary = await git.status();
     return summary.current || "main";
   }
+
+  /**
+   * Executes bash command quietly inside workspacePath.
+   * Stdout/stderr are returned to AI and not logged to runner console.
+   */
+  public async runBashCommand(
+    workspacePath: string,
+    command: string,
+    timeoutSeconds: number = 60
+  ): Promise<{ exitCode: number; stdout: string; stderr: string; durationMs: number }> {
+    if (this.isDangerousCommand(command)) {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: `[Security Guard] Execution blocked: Command '${command}' matches pinpoint forbidden danger rules.`,
+        durationMs: 0,
+      };
+    }
+
+    const startTime = Date.now();
+    try {
+      const { execa } = await import("execa");
+      const result = await execa("sh", ["-c", command], {
+        cwd: workspacePath,
+        timeout: timeoutSeconds * 1000,
+        reject: false,
+      });
+
+      return {
+        exitCode: result.exitCode ?? 0,
+        stdout: this.redactSecrets(result.stdout || ""),
+        stderr: this.redactSecrets(result.stderr || ""),
+        durationMs: Date.now() - startTime,
+      };
+    } catch (err: any) {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: this.redactSecrets(err.message || String(err)),
+        durationMs: Date.now() - startTime,
+      };
+    }
+  }
+
+  private isDangerousCommand(command: string): boolean {
+    const dangerousPatterns = [
+      /rm\s+(-[rRfF]+\s+)*(\/|~|\.|\*)/i,       // rm -rf /, rm -rf ~, rm -rf *, rm -rf .
+      /cat\s+(\.env|~\/\.ssh\/|\/etc\/shadow)/i, // cat .env, cat ~/.ssh/*, cat /etc/shadow
+      /\b(shutdown|reboot|init 0|mkfs)\b/i,      // 파괴적 시스템 명령어
+    ];
+    return dangerousPatterns.some((pattern) => pattern.test(command));
+  }
+
+  private activeTasks = new Map<string, { id: string; command: string; startTime: Date; process?: any; outputBuffer: string[]; isFinished: boolean; exitCode: number | null }>();
+
+  public async manageTask(
+    action: "list" | "status" | "kill" | "pkill",
+    taskId?: string | null,
+    pattern?: string | null
+  ): Promise<string> {
+    if (action === "list") {
+      if (this.activeTasks.size === 0) return "No active background tasks running.";
+      const list = Array.from(this.activeTasks.values()).map(
+        (t) => `• [${t.id}] Command: '${t.command}' | Status: ${t.isFinished ? `Finished (exitCode: ${t.exitCode})` : "Running"} | Started: ${t.startTime.toISOString()}`
+      );
+      return `Active Background Tasks (${this.activeTasks.size}):\n` + list.join("\n");
+    }
+
+    if (action === "status") {
+      if (!taskId) return "Error: taskId is required for 'status' action.";
+      const task = this.activeTasks.get(taskId);
+      if (!task) return `Error: Task ID '${taskId}' not found.`;
+      const recentLogs = task.outputBuffer.slice(-30).join("\n");
+      return `Task ID: ${task.id}\nCommand: ${task.command}\nStatus: ${task.isFinished ? `Finished (Exit code: ${task.exitCode})` : "Running"}\nLogs:\n${recentLogs || "(No output captured yet)"}`;
+    }
+
+    if (action === "kill") {
+      if (!taskId) return "Error: taskId is required for 'kill' action.";
+      const task = this.activeTasks.get(taskId);
+      if (!task) return `Error: Task ID '${taskId}' not found.`;
+      try {
+        if (task.process && typeof task.process.kill === "function") {
+          task.process.kill("SIGTERM");
+        }
+        task.isFinished = true;
+        this.activeTasks.delete(taskId);
+        return `Successfully killed background task '${taskId}'.`;
+      } catch (err: any) {
+        return `Failed to kill task '${taskId}': ${err.message || err}`;
+      }
+    }
+
+    if (action === "pkill") {
+      if (!pattern) return "Error: pattern is required for 'pkill' action.";
+      try {
+        const { execa } = await import("execa");
+        const res = await execa("pkill", ["-f", pattern], { reject: false });
+        return res.exitCode === 0
+          ? `Successfully killed processes matching pattern '${pattern}'.`
+          : `No running process matched pattern '${pattern}'.`;
+      } catch (err: any) {
+        return `pkill execution failed: ${err.message || err}`;
+      }
+    }
+
+    return "Invalid action specified.";
+  }
 }
 
 
