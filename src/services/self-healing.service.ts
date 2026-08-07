@@ -43,7 +43,7 @@ export class SelfHealingService {
         console.log(`[CLI] Log content omitted. Fetching issue body for Issue #${config.runId} in ${config.repoName}`);
         logContent = await this.githubAdapter.fetchIssueBody(config.repoName, config.runId, config.token);
       } else if (config.eventType === "production_log") {
-        let serverUrl = process.env.PIKILAND_SERVER_URL || "http://localhost:8080";
+        let serverUrl = "pikiland.yourssu.com";
         if (serverUrl && !serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
           serverUrl = `https://${serverUrl}`;
         }
