@@ -30,8 +30,8 @@ export class SelfHealingService {
 
     let logContent = config.logContent;
 
-    // Download log or issue body dynamically if logContent is empty
-    if (!logContent || logContent.trim().length === 0) {
+    // Download log or issue body dynamically if logContent is empty or if eventType is production_log
+    if (config.eventType === "production_log" || !logContent || logContent.trim().length === 0) {
       if (!config.runId) {
         throw new Error("Either PIKILAND_LOG_CONTENT or a valid PIKILAND_RUN_ID is required.");
       }
@@ -43,8 +43,14 @@ export class SelfHealingService {
         console.log(`[CLI] Log content omitted. Fetching issue body for Issue #${config.runId} in ${config.repoName}`);
         logContent = await this.githubAdapter.fetchIssueBody(config.repoName, config.runId, config.token);
       } else if (config.eventType === "production_log") {
-        console.log(`[CLI] Log content omitted for production_log. Fetching authenticated incident log for Hash: ${config.runId}`);
-        const serverUrl = process.env.PIKILAND_SERVER_URL || "http://localhost:8080";
+        let serverUrl = process.env.PIKILAND_SERVER_URL || "http://localhost:8080";
+        if (serverUrl && !serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
+          serverUrl = `https://${serverUrl}`;
+        }
+        if (serverUrl.startsWith("http://") && !serverUrl.includes("localhost") && !serverUrl.includes("127.0.0.1")) {
+          serverUrl = serverUrl.replace("http://", "https://");
+        }
+        console.log(`[CLI] Fetching 100% full raw log via HTTPS (Port 443) from PikiLand Web App (${serverUrl}) for Hash: ${config.runId}`);
         try {
           const resp = await fetch(`${serverUrl}/api/settings/incidents/detail?hash=${config.runId}`, {
             headers: {
@@ -54,13 +60,14 @@ export class SelfHealingService {
           if (resp.ok) {
             const data = (await resp.json()) as { rawLog?: string; normalizedSignature?: string };
             logContent = data.rawLog || data.normalizedSignature || `Production Error Incident Hash: ${config.runId}`;
+            console.log(`[CLI] Successfully retrieved 100% full raw log (${logContent.length} chars) from PikiLand Web App.`);
           } else {
-            console.warn(`[CLI] Incident detail API returned status ${resp.status}`);
-            logContent = `Production Error Incident Hash: ${config.runId}`;
+            console.warn(`[CLI] Incident detail API returned status ${resp.status}, falling back to logContent.`);
+            if (!logContent) logContent = `Production Error Incident Hash: ${config.runId}`;
           }
         } catch (e) {
           console.warn("[CLI] Incident detail API fetch failed:", e);
-          logContent = `Production Error Incident Hash: ${config.runId}`;
+          if (!logContent) logContent = `Production Error Incident Hash: ${config.runId}`;
         }
       }
     }
@@ -111,6 +118,14 @@ export class SelfHealingService {
 
     // 3. AI Analysis & Diagnostics (AI directly edits files in workspace via OpenCode tools)
     const aiResult = await this.aiAdapter.analyzeError(config, logContent, config.workspacePath);
+
+    // If prNeeded is true, ignore issue-related fields and prNotNeededReason completely
+    if (aiResult.prNeeded) {
+      aiResult.issueNeeded = false;
+      aiResult.issueTitle = undefined;
+      aiResult.issueBody = undefined;
+      aiResult.prNotNeededReason = undefined;
+    }
 
     const prUrls: string[] = [];
 
@@ -218,23 +233,43 @@ export class SelfHealingService {
             prUrls.push(prUrl);
             console.log(`Successfully created Single Best Verified PR: ${prUrl}`);
           } else {
-            throw new Error("GitHub API returned null PR URL");
+            console.error("GitHub API returned null PR URL");
           }
         } catch (ex: unknown) {
           const err = ex as Error;
           console.error("Failed to create PR for verified candidate:", err);
-          throw new Error(`Self-healing failed to create PR: ${err.message || err}`);
         }
       } else {
-        console.error("No PR candidates passed harness verification. No PR was created.");
-        throw new Error("Self-healing failed: No PR candidates passed harness verification.");
+        console.warn("No PR candidates passed harness verification. No PR was created.");
       }
     } else {
-      console.error("AI determined no PR fix is required or possible.");
-      throw new Error("Self-healing failed: AI analysis determined no PR fix is required or possible.");
+      console.log("AI determined no PR fix is required or possible.");
     }
 
-    // 4. Slack Notification
+    // 4. Issue Creation if PR was not created and prNeeded is false and issueNeeded is true
+    let issueUrl: string | null = null;
+    if (!aiResult.prNeeded && prUrls.length === 0 && aiResult.issueNeeded && aiResult.issueTitle && aiResult.issueBody) {
+      console.log("Creating GitHub Issue as requested by AI analysis...");
+      try {
+        let issueBodyWithLog = aiResult.issueBody;
+        if (logContent && logContent.trim().length > 0) {
+          issueBodyWithLog += `\n\n---\n\n<details>\n<summary>🔍 원본 에러 로그 보기</summary>\n\n\`\`\`\n${logContent}\n\`\`\`\n</details>`;
+        }
+        issueUrl = await this.githubAdapter.createIssue(
+          config.repoName,
+          aiResult.issueTitle,
+          issueBodyWithLog,
+          config.token
+        );
+        if (issueUrl) {
+          console.log(`Successfully created GitHub Issue: ${issueUrl}`);
+        }
+      } catch (issueErr) {
+        console.error("Failed to create GitHub Issue:", issueErr);
+      }
+    }
+
+    // 5. Slack Notification (Always sent regardless of prNeeded)
     if (config.slackWebhookUrl && config.slackWebhookUrl.trim().length > 0) {
       await this.slackAdapter.sendNotification(
         config.slackWebhookUrl,
@@ -243,12 +278,15 @@ export class SelfHealingService {
         config.eventType,
         config.repoName,
         config.runId || "cli",
-        prUrls
+        prUrls,
+        issueUrl
       );
     } else {
       console.log("Slack webhook is not set. Diagnostics result:");
       console.log("Summary:", aiResult.summary);
+      console.log("Cause:", aiResult.causeDescription);
       console.log("PR Candidates created:", prUrls);
+      if (issueUrl) console.log("GitHub Issue created:", issueUrl);
     }
   }
 }

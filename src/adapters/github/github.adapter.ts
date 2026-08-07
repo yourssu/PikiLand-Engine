@@ -111,4 +111,30 @@ export class GithubAdapter {
 
     return response.data.html_url || null;
   }
+
+  public async createIssue(
+    repoFullName: string,
+    title: string,
+    body: string,
+    token: string
+  ): Promise<string | null> {
+    const [owner, repo] = repoFullName.split("/");
+    if (!owner || !repo) {
+      throw new Error(`Invalid repository full name format: ${repoFullName}`);
+    }
+
+    const footer = `\n\n---\nCreated automatically by PikiLand AI Self-Healing Engine`;
+    const fullBody = body.includes("PikiLand") ? body : `${body}${footer}`;
+
+    const octokit = this.getOctokit(token);
+    const response = await octokit.rest.issues.create({
+      owner,
+      repo,
+      title,
+      body: fullBody,
+      labels: ["pikiland-incident"],
+    });
+
+    return response.data.html_url || null;
+  }
 }

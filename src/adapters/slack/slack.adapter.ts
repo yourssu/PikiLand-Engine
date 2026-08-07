@@ -8,7 +8,8 @@ export class SlackAdapter {
     eventType: string,
     repoName: string,
     runId: string,
-    prUrls: string[]
+    prUrls: string[],
+    issueUrl?: string | null
   ): Promise<void> {
     const isInvalidWebhook =
       !slackWebhookUrl ||
@@ -16,7 +17,7 @@ export class SlackAdapter {
       slackWebhookUrl.includes("your/webhook/url") ||
       !slackWebhookUrl.startsWith("https://");
 
-    const slackMessage = this.buildSlackMessage(logContent, aiResult, eventType, repoName, runId, prUrls);
+    const slackMessage = this.buildSlackMessage(logContent, aiResult, eventType, repoName, runId, prUrls, issueUrl);
 
     if (isInvalidWebhook) {
       console.log("Warning: SLACK_WEBHOOK_URL is not set or is a placeholder. Printing payload to stdout.");
@@ -74,21 +75,30 @@ export class SlackAdapter {
   }
 
   public buildSlackMessage(
-    _rawLog: string,
+    rawLog: string,
     aiResult: AiAnalysisResult,
     eventType: string,
     repoName: string,
     runId: string,
-    prUrls: string[]
+    prUrls: string[],
+    issueUrl?: string | null
   ): string {
     const title = `🚨 *[${repoName}] AI 시스템 장애 감지 및 자가 치유 알림*`;
     const context =
       eventType === "issues"
         ? "• *발생 이벤트*: 새로운 이슈/건의 접수"
-        : `• *발생 이벤트*: 빌드 및 배포 실패\n• *실행 정보(Run ID)*: <https://github.com/${repoName}/actions/runs/${runId}|${runId}>`;
+        : `• *발생 이벤트*: ${eventType}\n• *실행 정보(Run ID/Hash)*: <https://github.com/${repoName}/actions/runs/${runId}|${runId}>`;
 
     const summary = aiResult.summary || "핵심 요약 정보가 존재하지 않습니다.";
     const impact = aiResult.impact || "영향 범위 정보가 존재하지 않습니다.";
+    const cause = aiResult.causeDescription || "기술적 원인 분석 정보가 없습니다.";
+
+    let logSnippet = "";
+    if (rawLog && rawLog.trim().length > 0) {
+      const trimmed = rawLog.trim();
+      const snippet = trimmed.length > 500 ? trimmed.substring(0, 500) + "\n...[생략됨]" : trimmed;
+      logSnippet = `\n\n*📄 발생 에러 로그*\n\`\`\`\n${snippet}\n\`\`\``;
+    }
 
     let prStatus: string;
     if (prUrls && prUrls.length > 0) {
@@ -104,9 +114,16 @@ export class SlackAdapter {
       }
       prStatus = parts.join("\n").trim();
     } else {
-      prStatus = "ℹ️ *[AI 자동 코드 패치]* 원인이 불명확하거나 코드로 해결할 수 없어 자동 PR을 생성하지 않았습니다.";
+      const reason = aiResult.prNotNeededReason || "원인이 불명확하거나 소스코드 수정만으로는 해결할 수 없는 장애입니다.";
+      let statusStr = `ℹ️ *[AI 자동 코드 패치 미생성 사유]*\n${reason}`;
+      if (issueUrl) {
+        statusStr += `\n\n📋 *[GitHub Issue 자동 생성 완료]*\n👉 *이슈 링크*: <${issueUrl}|GitHub 이슈 보기>`;
+      } else {
+        statusStr += `\n\n📋 *[GitHub Issue]* 별도 GitHub 이슈 생성이 필요하지 않은 건으로 판명되었습니다.`;
+      }
+      prStatus = statusStr;
     }
 
-    return `${title}\n\n${context}\n\n*📌 핵심 요약*\n${summary}\n\n*⚠️ 위험도 및 서비스 영향*\n${impact}\n\n${prStatus}`;
+    return `${title}\n\n${context}\n\n*📌 핵심 요약*\n${summary}\n\n*⚠️ 위험도 및 서비스 영향*\n${impact}\n\n*💻 기술적 원인 분석*\n${cause}${logSnippet}\n\n${prStatus}`;
   }
 }
