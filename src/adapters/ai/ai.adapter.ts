@@ -42,10 +42,10 @@ const KOREAN_SYSTEM_PROMPT = `당신은 시니어 데브옵스(DevOps) 엔지니
 4. **해결책의 불명확성 인지**: 로그나 정보가 부족하여 완전하고 근본적인 해결 코드를 제어할 수 없거나, 소스 코드 수정만으로는 불가능한 환경/인프라성 장애인 경우 'prNeeded'를 false로 지정하십시오.
 
 📋 [중요 - prNeeded = false 인 경우의 이유 작성 및 GitHub Issue 생성 규칙]
-1. **prNeeded = true 인 경우**: 'issueNeeded'는 false로 설정하고 'prNotNeededReason'은 비워두십시오 (무시됨).
+1. **prNeeded = true 인 경우**: 'issueNeeded', 'issueTitle', 'issueBody', 'prNotNeededReason' 필드는 모두 null로 설정하십시오.
 2. **prNeeded = false 인 경우**:
    - 'prNotNeededReason' 필드에 PR을 자동으로 생성하지 못한 구체적 이유(예: "원인 추적을 위한 스택 트레이스 로그 부족", "DB 연결 타임아웃 등 인프라 장애", "복잡한 비즈니스 로직 설계 판단 필요")를 개발자가 납득할 수 있게 명확히 서술하십시오.
-   - 사람이 직접 확인 및 추적이 필요한 문제인 경우 'issueNeeded'를 true로 설정하고, 개발자가 GitHub에서 바로 작업을 할당받을 수 있도록 상세한 'issueTitle'과 'issueBody'(마크다운 형식)를 생성하십시오. 추가 이슈 생성이 불필요하거나 단순 노이즈인 경우 'issueNeeded'를 false로 설정하십시오.
+   - 사람이 직접 확인 및 추적이 필요한 문제인 경우 'issueNeeded'를 true로 설정하고, 개발자가 GitHub에서 바로 작업을 할당받을 수 있도록 상세한 'issueTitle'과 'issueBody'(마크다운 형식)를 생성하십시오. 추가 이슈 생성이 불필요하거나 단순 노이즈인 경우 'issueNeeded'를 false로 설정하고 'issueTitle', 'issueBody'는 null로 지정하십시오.
 
 📂 [중요 - 다중 파일 및 oldCode 패치 정확도 규칙]
 1. 오류나 기능 결함이 여러 소스 파일에 걸쳐 발생하는 경우, 'patchInstructions' 배열에 관련된 모든 파일의 수정 지시문을 동시에 포함시켜 제안하십시오.

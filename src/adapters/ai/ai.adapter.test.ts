@@ -8,26 +8,29 @@ describe("AiAdapter Test", () => {
     expect(adapter).toBeDefined();
   });
 
-  it("should validate AiAnalysisResultSchema with optional fields and post-processing", () => {
+  it("should validate AiAnalysisResultSchema with nullable fields for OpenAI strict mode compliance", () => {
     const validData = {
       isConfident: true,
       summary: "Test summary",
       impact: "Test impact",
       causeDescription: "Test cause",
       prNeeded: true,
-      issueNeeded: false,
+      prNotNeededReason: null,
+      issueNeeded: null,
+      issueTitle: null,
+      issueBody: null,
       prCandidates: [],
     };
 
     const parsed = AiAnalysisResultSchema.parse(validData);
     expect(parsed.prNeeded).toBeTrue();
-    expect(parsed.issueNeeded).toBeFalse();
-    expect(parsed.prNotNeededReason).toBeUndefined();
+    expect(parsed.issueNeeded).toBeNull();
+    expect(parsed.prNotNeededReason).toBeNull();
 
     // Verify JSON serialization doesn't throw or corrupt
     const jsonString = JSON.stringify(parsed);
     expect(jsonString).toContain('"prNeeded":true');
-    expect(jsonString).toContain('"issueNeeded":false');
+    expect(jsonString).toContain('"prNotNeededReason":null');
   });
 
   it("should validate AiAnalysisResultSchema when prNeeded is false with issueNeeded", () => {

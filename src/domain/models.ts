@@ -13,10 +13,10 @@ export const AiAnalysisResultSchema = z.object({
   impact: z.string().describe("Impact of the issue for non-technical users"),
   causeDescription: z.string().describe("Technical cause description for developers"),
   prNeeded: z.boolean().describe("Whether a PR fix is required and possible"),
-  prNotNeededReason: z.string().nullable().optional().describe("Reason why PR fix is not needed or not possible (when prNeeded is false)"),
-  issueNeeded: z.boolean().nullable().optional().describe("Whether a GitHub Issue should be created (evaluated when prNeeded is false)"),
-  issueTitle: z.string().nullable().optional().describe("Title for GitHub Issue if issueNeeded is true"),
-  issueBody: z.string().nullable().optional().describe("Detailed markdown body for GitHub Issue if issueNeeded is true"),
+  prNotNeededReason: z.string().nullable().describe("Reason why PR fix is not needed or not possible (set null when prNeeded is true)"),
+  issueNeeded: z.boolean().nullable().describe("Whether a GitHub Issue should be created (evaluated when prNeeded is false, set null when prNeeded is true)"),
+  issueTitle: z.string().nullable().describe("Title for GitHub Issue if issueNeeded is true, otherwise null"),
+  issueBody: z.string().nullable().describe("Detailed markdown body for GitHub Issue if issueNeeded is true, otherwise null"),
   prCandidates: z.array(PrCandidateSchema).describe("List of PR candidates proposed by AI"),
 });
 export type AiAnalysisResult = z.infer<typeof AiAnalysisResultSchema>;
