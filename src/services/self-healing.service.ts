@@ -108,7 +108,7 @@ export class SelfHealingService {
       }
     }
 
-    if (harnessCmd && harnessCmd.trim().length > 0) {
+    if (config.eventType !== "production_log" && harnessCmd && harnessCmd.trim().length > 0) {
       console.log(`[Harness] Executing pre-patch harness command to reproduce issue: ${harnessCmd}`);
       const hResBefore = await this.workspaceAdapter.runHarness(config.workspacePath, harnessCmd);
       if (hResBefore.success) {
@@ -117,6 +117,8 @@ export class SelfHealingService {
         throw new Error("Self-healing failed: Issue is not reproducible on current workspace.");
       }
       console.log("[Harness] Bug reproduction SUCCEEDED: Tests failed as expected on buggy workspace. Proceeding to patch generation.");
+    } else if (config.eventType === "production_log") {
+      console.log("[Harness] Pre-patch bug reproduction check SKIPPED for production_log event as runtime behavior issues cannot be reproduced by unit test suite alone.");
     }
 
     // 3. AI Analysis & Diagnostics (AI directly edits files in workspace via OpenCode tools)
