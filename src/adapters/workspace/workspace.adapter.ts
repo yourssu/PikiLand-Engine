@@ -240,7 +240,7 @@ export class WorkspaceAdapter {
 
     // Authenticated remote URL
     const remoteUrl = `https://x-access-token:${token}@github.com/${repoFullName}.git`;
-    await git.push(remoteUrl, branchName, ["--set-upstream"]);
+    await git.push(remoteUrl, branchName, ["--set-upstream", "--force"]);
   }
 
   public async listDirectory(workspacePath: string, relativePath: string = "."): Promise<string> {
