@@ -103,14 +103,12 @@ export class SlackAdapter {
     let prStatus: string;
     if (prUrls && prUrls.length > 0) {
       const parts: string[] = [];
-      parts.push("🤖 *[AI 자동 코드 패치 후보]*\n문제를 감지하여 자동으로 코드를 수정하고 Pull Request(PR) 후보들을 생성했습니다. 개발팀의 검토가 필요합니다:\n");
+      parts.push("🤖 *[AI 자동 코드 패치 생성 완료]*\n문제를 감지하여 자동으로 코드를 수정하고 Pull Request(PR)를 생성했습니다. 개발팀의 검토가 필요합니다:\n");
       for (let i = 0; i < prUrls.length; i++) {
         const prUrl = prUrls[i];
-        const candidate = aiResult.prCandidates && i < aiResult.prCandidates.length ? aiResult.prCandidates[i] : undefined;
-        const patchSummary = candidate?.patchSummary || "코드 수정을 완료했습니다.";
-        parts.push(`*후보 ${i + 1}*`);
-        parts.push(`🛠️ *수정 내용*: ${patchSummary}`);
-        parts.push(`👉 *PR 링크*: <${prUrl}|보기>\n`);
+        const prTitle = aiResult.prTitle || "자동 에러 수정 패치";
+        parts.push(`🛠️ *수정 항목*: ${prTitle}`);
+        parts.push(`👉 *PR 바로가기*: <${prUrl}|GitHub PR 보기>\n`);
       }
       prStatus = parts.join("\n").trim();
     } else {

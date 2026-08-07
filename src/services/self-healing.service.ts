@@ -1,6 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import { CliConfig, PrCandidate } from "../domain/models";
+import { CliConfig } from "../domain/models";
 import { LogTruncator } from "../domain/log-truncator";
 import { GithubAdapter } from "../adapters/github/github.adapter";
 import { WorkspaceAdapter } from "../adapters/workspace/workspace.adapter";
@@ -127,15 +127,15 @@ export class SelfHealingService {
     // If prNeeded is true, ignore issue-related fields and prNotNeededReason completely
     if (aiResult.prNeeded) {
       aiResult.issueNeeded = false;
-      aiResult.issueTitle = undefined;
-      aiResult.issueBody = undefined;
-      aiResult.prNotNeededReason = undefined;
+      aiResult.issueTitle = null;
+      aiResult.issueBody = null;
+      aiResult.prNotNeededReason = null;
     }
 
     const prUrls: string[] = [];
 
-    if (aiResult.prNeeded && aiResult.prCandidates && aiResult.prCandidates.length > 0) {
-      console.log(`AI requested PR. Evaluating candidate(s) for the Single Best PR...`);
+    if (aiResult.prNeeded) {
+      console.log(`AI requested PR. Evaluating workspace edits for the Single Best PR...`);
 
       let baseBranch = config.targetBranch;
       if (!baseBranch || baseBranch.trim().length === 0) {
@@ -145,7 +145,6 @@ export class SelfHealingService {
         baseBranch = "main";
       }
 
-      let selectedCandidate: PrCandidate = aiResult.prCandidates[0]!;
       let isVerified = false;
 
       // 4. Direct Harness Verification on AI-edited workspace
@@ -182,7 +181,7 @@ export class SelfHealingService {
                 config.workspacePath,
                 trimmedOutput
               );
-              if (!refinedResult || !refinedResult.prNeeded || !refinedResult.prCandidates || refinedResult.prCandidates.length === 0) break;
+              if (!refinedResult || !refinedResult.prNeeded) break;
 
               console.log(`[Harness] Executing post-refinement harness verification: ${harnessCmd}`);
               const hResRetry = await this.workspaceAdapter.runHarness(config.workspacePath, harnessCmd);
@@ -205,44 +204,39 @@ export class SelfHealingService {
         try {
           const hashTag = config.fingerprintHash ? config.fingerprintHash.trim() : `${Date.now()}`;
           const branchName = `pikiland/fix-${hashTag}`;
-          const commitMsg = selectedCandidate.prTitle || "fix: automated AI bug patch";
+          const prTitle = aiResult.prTitle || "fix: automated AI bug patch";
+          const prBody = aiResult.prBody || "Automated fix proposed by PikiLand AI";
 
           await this.workspaceAdapter.commitAndPush(
             config.workspacePath,
             branchName,
-            commitMsg,
+            prTitle,
             config.token,
             config.repoName,
             config.gitUserName,
             config.gitUserEmail
           );
 
-          let detailedPrBody = selectedCandidate.prBody || "";
-          if (config.fingerprintHash) {
-            detailedPrBody += `\n\nPikiLand Incident Fingerprint: ${config.fingerprintHash}`;
-          }
-          if (logContent && logContent.trim().length > 0) {
-            detailedPrBody += `\n\n---\n\n<details>\n<summary>🔍 원본 에러 로그 및 발생 Context 보기</summary>\n\n\`\`\`\n${logContent}\n\`\`\`\n</details>`;
+          let detailedPrBody = prBody;
+          if (aiResult.causeDescription) {
+            detailedPrBody += `\n\n### 🔍 Technical Cause Analysis\n${aiResult.causeDescription}`;
           }
 
+          console.log(`Creating PR for branch ${branchName} -> ${baseBranch}`);
           const prUrl = await this.githubAdapter.createPullRequest(
             config.repoName,
-            selectedCandidate.prTitle || "fix: automated AI bug patch",
+            prTitle,
             detailedPrBody,
             branchName,
             baseBranch,
             config.token
           );
-
           if (prUrl) {
             prUrls.push(prUrl);
-            console.log(`Successfully created Single Best Verified PR: ${prUrl}`);
-          } else {
-            console.error("GitHub API returned null PR URL");
+            console.log(`Successfully created PR: ${prUrl}`);
           }
-        } catch (ex: unknown) {
-          const err = ex as Error;
-          console.error("Failed to create PR for verified candidate:", err);
+        } catch (prErr) {
+          console.error("Failed to commit/push/create PR:", prErr);
         }
       } else {
         console.warn("No PR candidates passed harness verification. No PR was created.");
