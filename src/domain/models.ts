@@ -41,6 +41,7 @@ export interface CliConfig {
   readonly harnessCmd?: string;
   readonly targetBranch?: string;
   readonly maxRetries: number;
+  readonly pikilandServerUrl?: string;
   readonly openAiApiKey?: string;
   readonly anthropicApiKey?: string;
   readonly gitUserName?: string;

@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { CliConfig } from "./domain/models";
 import { SelfHealingService } from "./services/self-healing.service";
+import { SlackAdapter } from "./adapters/slack/slack.adapter";
 
 function getEnvOrProperty(key: string): string | undefined {
   const val = process.env[key];
@@ -42,6 +43,7 @@ async function main() {
   const targetBranch = getEnvOrProperty("PIKILAND_TARGET_BRANCH");
   const maxRetriesStr = getEnvOrProperty("PIKILAND_RALPH_MAX_RETRIES") || "3";
   const maxRetries = parseInt(maxRetriesStr, 10) || 3;
+  const pikilandServerUrl = getEnvOrProperty("PIKILAND_SERVER_URL");
 
   const openAiApiKey = getEnvOrProperty("OPENAI_API_KEY");
   const anthropicApiKey = getEnvOrProperty("ANTHROPIC_API_KEY");
@@ -75,6 +77,7 @@ async function main() {
     harnessCmd,
     targetBranch,
     maxRetries,
+    pikilandServerUrl,
     openAiApiKey,
     anthropicApiKey,
     gitUserName,
@@ -89,7 +92,16 @@ async function main() {
     process.exit(0);
   } catch (error: unknown) {
     const err = error as Error;
-    console.error("Fatal error in CLI Execution Engine:", err.message || err);
+    const errorMessage = err.message || String(err);
+    console.error("Fatal error in CLI Execution Engine:", errorMessage);
+    if (slackWebhookUrl && slackWebhookUrl.trim().length > 0) {
+      try {
+        const slackAdapter = new SlackAdapter();
+        await slackAdapter.sendErrorNotification(slackWebhookUrl, repoName, errorMessage);
+      } catch (slackErr) {
+        console.error("Failed to send Slack error notification:", slackErr);
+      }
+    }
     process.exit(1);
   }
 }

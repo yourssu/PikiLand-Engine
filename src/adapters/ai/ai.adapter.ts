@@ -166,15 +166,9 @@ Instructions:
         });
         return object;
       } catch (fallbackErr) {
-        console.error("[AiAdapter] Fallback direct call also failed:", fallbackErr);
-        return {
-          isConfident: false,
-          summary: `⚠️ AI 분석 호출에 실패했습니다. 에러: ${(fallbackErr as Error).message || fallbackErr}`,
-          impact: "오류가 발생하여 장애 영향을 분석하지 못했습니다.",
-          causeDescription: "AI 연동 중 예외가 발생했습니다.",
-          prNeeded: false,
-          prCandidates: [],
-        };
+        const err = fallbackErr as Error;
+        console.error("[AiAdapter] Fallback direct call also failed:", err);
+        throw new Error(`AI LLM Analysis API call failed: ${err.message || err}`);
       }
     }
   }

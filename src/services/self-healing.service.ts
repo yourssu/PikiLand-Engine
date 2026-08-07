@@ -43,8 +43,9 @@ export class SelfHealingService {
         console.log(`[CLI] Log content omitted. Fetching issue body for Issue #${config.runId} in ${config.repoName}`);
         logContent = await this.githubAdapter.fetchIssueBody(config.repoName, config.runId, config.token);
       } else if (config.eventType === "production_log") {
-        let serverUrl = "pikiland.yourssu.com";
-        if (serverUrl && !serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
+        let rawServerUrl = config.pikilandServerUrl || process.env.PIKILAND_SERVER_URL;
+        let serverUrl = (rawServerUrl && rawServerUrl.trim().length > 0) ? rawServerUrl.trim() : "https://pikiland.yourssu.com";
+        if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
           serverUrl = `https://${serverUrl}`;
         }
         if (serverUrl.startsWith("http://") && !serverUrl.includes("localhost") && !serverUrl.includes("127.0.0.1")) {
@@ -62,12 +63,14 @@ export class SelfHealingService {
             logContent = data.rawLog || data.normalizedSignature || `Production Error Incident Hash: ${config.runId}`;
             console.log(`[CLI] Successfully retrieved 100% full raw log (${logContent.length} chars) from PikiLand Web App.`);
           } else {
-            console.warn(`[CLI] Incident detail API returned status ${resp.status}, falling back to logContent.`);
-            if (!logContent) logContent = `Production Error Incident Hash: ${config.runId}`;
+            const errMsg = `Reverse lookup API returned HTTP ${resp.status} for Hash: ${config.runId}`;
+            console.error(`[CLI] ${errMsg}`);
+            throw new Error(errMsg);
           }
-        } catch (e) {
-          console.warn("[CLI] Incident detail API fetch failed:", e);
-          if (!logContent) logContent = `Production Error Incident Hash: ${config.runId}`;
+        } catch (e: unknown) {
+          const err = e as Error;
+          console.error("[CLI] Reverse lookup API fetch failed:", err.message || err);
+          throw new Error(`Reverse lookup failed for incident hash ${config.runId}: ${err.message || err}`);
         }
       }
     }
