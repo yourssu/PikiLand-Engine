@@ -134,18 +134,18 @@ Instructions:
 
     try {
       const fileCount = await this.workspaceAdapter.countSourceFiles(workspacePath);
-      const maxSteps = Math.min(60, 15 + Math.floor(fileCount / 30));
+      const maxSteps = Math.min(150, 40 + Math.floor(fileCount / 10));
       console.log(`[AI Adapter] Dynamic maxSteps cap calculated: ${maxSteps} (for ~${fileCount} workspace files)`);
       console.log(`[AI Adapter] Starting agentic investigation loop...`);
 
-      // Step 1: Agentic loop with tools to gather context & modify code with 3-min timeout guard
+      // Step 1: Agentic loop with tools to gather context & modify code with 7-min timeout guard
       const { text: agenticContext } = await generateText({
         model: modelProvider,
         system: KOREAN_SYSTEM_PROMPT,
         prompt,
         tools,
         maxSteps,
-        abortSignal: AbortSignal.timeout(180000),
+        abortSignal: AbortSignal.timeout(420000),
       });
 
       console.log(`[AI Adapter] Agentic loop completed. Generating structured output...`);
