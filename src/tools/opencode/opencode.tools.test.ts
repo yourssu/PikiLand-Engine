@@ -6,6 +6,8 @@ import {
   createOpencodeWriteTool,
   createOpencodeListTool,
   createOpencodeGrepTool,
+  createOpencodeBashTool,
+  createOpencodeManageTaskTool,
 } from "./opencode.tools";
 
 describe("OpenCode Tools Unit Test", () => {
@@ -18,11 +20,15 @@ describe("OpenCode Tools Unit Test", () => {
     const writeTool = createOpencodeWriteTool(workspaceAdapter, workspacePath);
     const listTool = createOpencodeListTool(workspaceAdapter, workspacePath);
     const grepTool = createOpencodeGrepTool(workspaceAdapter, workspacePath);
+    const bashTool = createOpencodeBashTool(workspaceAdapter, workspacePath);
+    const manageTaskTool = createOpencodeManageTaskTool(workspaceAdapter);
 
     expect(readTool.description).toContain("Reads");
     expect(editTool.description).toContain("Edits");
     expect(writeTool.description).toContain("Writes");
     expect(listTool.description).toContain("Lists");
     expect(grepTool.description).toContain("Searches");
+    expect(bashTool.description).toContain("Executes a shell command");
+    expect(manageTaskTool.description).toContain("Manages background shell tasks");
   });
 });
