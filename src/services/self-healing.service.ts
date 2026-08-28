@@ -108,17 +108,17 @@ export class SelfHealingService {
       }
     }
 
-    if (config.eventType !== "production_log" && harnessCmd && harnessCmd.trim().length > 0) {
-      console.log(`[Harness] Executing pre-patch harness command to reproduce issue: ${harnessCmd}`);
+    if (config.eventType === "workflow_run" && harnessCmd && harnessCmd.trim().length > 0) {
+      console.log(`[Harness] Executing pre-patch harness command to reproduce CI failure: ${harnessCmd}`);
       const hResBefore = await this.workspaceAdapter.runHarness(config.workspacePath, harnessCmd);
       if (hResBefore.success) {
-        console.error("[Harness] Bug reproduction FAILED: Tests passed on buggy workspace (Red verification failed).");
-        console.error("[Harness] Discarding patching process as issue is not reproducible.");
-        throw new Error("Self-healing failed: Issue is not reproducible on current workspace.");
+        console.warn("[Harness Warning] Tests currently pass on workspace. CI failure might be due to linting, build, typecheck, or specific integration tests.");
+        console.warn("[Harness Warning] Proceeding with AI error log diagnostics instead of hard aborting.");
+      } else {
+        console.log("[Harness] Bug reproduction SUCCEEDED: Tests failed as expected on buggy workspace. Proceeding to patch generation.");
       }
-      console.log("[Harness] Bug reproduction SUCCEEDED: Tests failed as expected on buggy workspace. Proceeding to patch generation.");
-    } else if (config.eventType === "production_log") {
-      console.log("[Harness] Pre-patch bug reproduction check SKIPPED for production_log event as runtime behavior issues cannot be reproduced by unit test suite alone.");
+    } else {
+      console.log(`[Harness] Pre-patch bug reproduction check SKIPPED for event '${config.eventType}'.`);
     }
 
     // 3. AI Analysis & Diagnostics (AI directly edits files in workspace via OpenCode tools)
@@ -222,6 +222,8 @@ export class SelfHealingService {
             detailedPrBody += `\n\n### 🔍 Technical Cause Analysis\n${aiResult.causeDescription}`;
           }
 
+          detailedPrBody += `\n\n---\nAuthored by PikiLand Engine\nPikiLand Incident Fingerprint: ${hashTag}`;
+
           console.log(`Creating PR for branch ${branchName} -> ${baseBranch}`);
           const prUrl = await this.githubAdapter.createPullRequest(
             config.repoName,
@@ -240,6 +242,7 @@ export class SelfHealingService {
         }
       } else {
         console.warn("No PR candidates passed harness verification. No PR was created.");
+        throw new Error("Self-healing failed: All patch candidates failed harness verification (Ralph Loop exhausted).");
       }
     } else {
       console.log("AI determined no PR fix is required or possible.");

@@ -1,48 +1,47 @@
 # AGENTS.md
 
 ## 🤖 Overview
-Welcome to PikiLand! You are an agent interacting with a system designed to automatically detect, analyze, and patch software errors from GitHub. This project is part of the "PikiLand" ecosystem, which aims to reduce developer on-call burden by providing verified Pull Requests (PRs) for CI failures and GitHub Issues.
+Welcome to PikiLand Engine! You are an agent interacting with the CLI Execution Engine designed to automatically detect, analyze, and patch software errors from GitHub inside GitHub Actions Runner environments. This project is part of the "PikiLand" ecosystem, which aims to reduce developer on-call burden by providing verified Pull Requests (PRs) for CI failures and GitHub Issues.
 
 ## 🛠 Project Core Concepts
 
 ### 1. Two Operational Modes
-*   **Web App Mode (Coordinator)**: The Spring Boot application that handles webhooks, manages repository settings, and orchestrates the overall flow. It acts as the "brain."
-*   **CLI Mode (Execution Engine)**: Runs inside GitHub Actions. This is where the heavy lifting happens: analyzing logs, running tests, applying patches, and executing the **Ralph Loop**.
+*   **Web App Mode (Coordinator)**: The TypeScript + Bun (Hono) application in `yourssu/PikiLand` that handles webhooks, manages repository settings, and orchestrates the overall flow. It acts as the "brain."
+*   **CLI Mode (Execution Engine)**: Resides in this repository (`yourssu/PikiLand-Engine` or `grabic1060/PikiLand-Engine`) and runs inside GitHub Actions. This is where the heavy lifting happens: analyzing logs, running tests, applying patches via OpenCode tools, and executing the **Ralph Loop**.
 
 ### 2. The Ralph Loop & Harness
-*   **Harness**: A command (e.g., `./gradlew test`) that must be executable in the target repository to reproduce an error (*Red*) and verify a fix (*Green*).
+*   **Harness**: A command (e.g., `bun test`, `./gradlew test`, `pytest`, `cargo test`) that must be executable in the target repository to verify a fix (*Green*).
 *   **Ralph Loop**: An iterative process where we feed harness failure logs back into an AI model to refine the patch. We repeat this up to a maximum number of retries (`PIKILAND_RALPH_MAX_RETRIES`).
 
-### 3. Data Pipeline: Context Bundles
-PikiLand links disparate data points (CI logs, Sentry errors, PostHog events) into a **Context Bundle**. This bundle provides the necessary context for an agent to understand what went wrong and how to fix it.
+### 3. OpenCode Workspace Tools
+PikiLand Engine integrates isolated workspace tools (`read`, `edit`, `write`, `list`, `grep`, `bash`, `manage_task`) allowing AI models to safely inspect the target workspace and apply surgical edits.
 
 ## 🚦 Guidelines for Agents
 
 ### ✅ DO
 *   **Read First**: Always read existing files, especially `README.md`, `docs/DESIGN.md`, and `docs/ARCHITECTURE_AND_DATA_PIPELINE.md` before making changes.
 *   **Understand the Harness**: If you are working on a feature or fixing a bug, identify the command that serves as the "Harness" for verification.
-*   **Verify via Tests**: Never assume a change works. Run the relevant test suite or the specific harness command to ensure the fix is valid and doesn't introduce regressions.
-*   **Follow Existing Patterns**: Mimic the existing Java/Spring Boot patterns, directory structures, and coding styles (e.g., use `services`, `controllers`, `repositories` appropriately).
-*   **Respect the "Single Best PR" Rule**: PikiLand's goal is to provide only the *single best* verified patch, not dozens of unverified ones. Design features that support this ranking/filtering logic.
-*   **Maintain Security**: Never hardcode secrets or expose sensitive log data (PII) in any output or PR description.
+*   **Verify via Tests**: Never assume a change works. Run the relevant test suite (`bun test`) or typecheck (`bun run typecheck`) to ensure the fix is valid.
+*   **Follow Existing Patterns**: Mimic the existing TypeScript / Bun patterns, directory structures (`src/adapters`, `src/services`, `src/tools`, `src/domain`).
+*   **Respect the "Single Best PR" Rule**: PikiLand's goal is to provide only the *single best* verified patch, not dozens of unverified ones.
+*   **Maintain Security & Redaction**: Ensure all secrets and sensitive tokens are redacted via `redactSecrets()` and path traversal guards are preserved.
 
 ### ❌ DO NOT
-*   **Do Not Guess**: If a module, class, or configuration is unclear, use `grep` or `glob` to find it or ask the user/advisor for clarification.
+*   **Do Not Guess**: If a module, class, or configuration is unclear, use `grep` or `glob` to find it or ask the user for clarification.
 *   **Do Not Refactor Without Reason**: Do not clean up surrounding code or change styles unless explicitly requested. Keep changes "surgical."
-*   **Do Not Ignore the Ralph Loop**: When implementing automation, ensure you consider how failure logs will be fed back into the loop.
-*   **Do Not Create Unverifiable Patches**: Do not suggest or implement logic that bypasses the need for a reproducible harness.
+*   **Do Not Bypass Harness Verification**: Do not suggest or implement logic that bypasses the need for a reproducible harness.
 
 ## 📂 Key Directories
-*   `src/`: The core Java/Spring Boot source code.
+*   `src/`: The core TypeScript / Bun CLI source code (`adapters/`, `domain/`, `services/`, `tools/`).
 *   `docs/`: Detailed design, architecture, and pipeline documentation.
-*   `data/`: Likely used for local storage or data structures (inspect via `ls`).
-*   `build.gradle.kts`: Project dependencies and build configuration.
+*   `package.json`: Project dependencies and script configuration.
 
 ## 🚀 Verification Commands
-*Check the `README.md` or `build.gradle.kts` for project-specific test commands.*
+*Check `package.json` for project-specific commands.*
 Generally:
-*   Run architecture tests: `./gradlew test --tests '*ArchitectureTest'`
-*   Run log truncation tests: `./gradlew test --tests '*LogTruncatorTest'`
+*   Run tests: `bun test`
+*   Run typecheck: `bun run typecheck`
+*   Compile binary: `bun run build`
 
 ---
 *End of AGENTS.md*

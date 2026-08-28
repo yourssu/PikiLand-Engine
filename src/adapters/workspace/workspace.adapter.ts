@@ -4,7 +4,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { HarnessResult } from "../../domain/models";
 
-const RESTRICTED_DIRS = [".git", ".venv", "node_modules", "build", "dist", "target", "out", ".aws", ".ssh", ".idea", ".vscode"];
+const RESTRICTED_DIRS = [".git", ".venv", "node_modules", "build", "dist", "target", "out", ".aws", ".ssh", ".idea", ".vscode", "pikiland-engine"];
 const RESTRICTED_FILES = [".env", "secrets.json", "credentials", "id_rsa", "id_ed25519", "service-account.json", "keystore.jks"];
 const RESTRICTED_EXTENSIONS = [".pem", ".key", ".pfx", ".p12", ".pkcs12"];
 const ALLOWED_ENV_FILES = [".env.example", ".env.sample", ".env.template"];
@@ -13,7 +13,13 @@ const DANGEROUS_SUB_SHELL_PATTERNS = ["$(", "`", "eval ", "exec "];
 export class WorkspaceAdapter {
   public redactSecrets(text: string | null | undefined): string {
     if (!text) return "";
-    return text.replace(/x-access-token:[^@\s]+@/g, "x-access-token:***@");
+    let redacted = text.replace(/x-access-token:[^@\s]+@/g, "x-access-token:***@");
+    redacted = redacted.replace(/(ghp|ghs|gho|ghu|ghr)_[a-zA-Z0-9]{20,}/g, "$1_***");
+    redacted = redacted.replace(/github_pat_[a-zA-Z0-9_]{22,}/g, "github_pat_***");
+    redacted = redacted.replace(/sk-(proj-)?[a-zA-Z0-9_-]{20,}/g, "sk-***");
+    redacted = redacted.replace(/sk-ant-[a-zA-Z0-9_-]{20,}/g, "sk-ant-***");
+    redacted = redacted.replace(/Bearer\s+[a-zA-Z0-9_.-]{20,}/gi, "Bearer ***");
+    return redacted;
   }
 
   public isRestrictedPath(workspacePath: string, targetPath: string): boolean {
@@ -462,8 +468,9 @@ export class WorkspaceAdapter {
   public async runBashCommand(
     workspacePath: string,
     command: string,
-    timeoutSeconds: number = 60
-  ): Promise<{ exitCode: number; stdout: string; stderr: string; durationMs: number }> {
+    timeoutSeconds: number = 60,
+    isBackground: boolean = false
+  ): Promise<{ exitCode: number; stdout: string; stderr: string; durationMs: number; taskId?: string }> {
     if (this.isDangerousCommand(command)) {
       return {
         exitCode: 1,
@@ -476,6 +483,43 @@ export class WorkspaceAdapter {
     const startTime = Date.now();
     try {
       const { execa } = await import("execa");
+
+      if (isBackground) {
+        const taskId = `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const buffer: string[] = [];
+        const proc = execa("sh", ["-c", command], { cwd: workspacePath });
+
+        const taskRecord = {
+          id: taskId,
+          command,
+          startTime: new Date(),
+          process: proc,
+          outputBuffer: buffer,
+          isFinished: false,
+          exitCode: null as number | null,
+        };
+        this.activeTasks.set(taskId, taskRecord);
+
+        proc.then((res: any) => {
+          taskRecord.isFinished = true;
+          taskRecord.exitCode = res.exitCode ?? 0;
+          if (res.stdout) buffer.push(this.redactSecrets(res.stdout));
+          if (res.stderr) buffer.push(this.redactSecrets(res.stderr));
+        }).catch((err: any) => {
+          taskRecord.isFinished = true;
+          taskRecord.exitCode = err.exitCode ?? 1;
+          if (err.message) buffer.push(this.redactSecrets(err.message));
+        });
+
+        return {
+          exitCode: 0,
+          stdout: `[Background Task Started] Task ID: ${taskId} (Command: '${command}')`,
+          stderr: "",
+          durationMs: Date.now() - startTime,
+          taskId,
+        };
+      }
+
       const result = await execa("sh", ["-c", command], {
         cwd: workspacePath,
         timeout: timeoutSeconds * 1000,

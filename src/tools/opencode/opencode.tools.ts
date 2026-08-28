@@ -106,10 +106,11 @@ export const createOpencodeBashTool = (workspaceAdapter: WorkspaceAdapter, works
       command: z.string().describe("Exact shell command line to execute inside the workspace directory."),
       description: z.string().nullable().describe("Short explanation of why you are running this command (or null)."),
       timeoutSeconds: z.number().nullable().describe("Execution timeout in seconds (or null for default 60s)."),
+      isBackground: z.boolean().nullable().describe("Set true to execute as background task (returns taskId for manage_task tool)."),
     }),
-    execute: async ({ command, description, timeoutSeconds }) => {
-      console.log(`   [Agent Tool Call] bash: ${command.substring(0, 80)}${description ? ` (${description})` : ""}`);
-      return await workspaceAdapter.runBashCommand(workspacePath, command, timeoutSeconds || 60);
+    execute: async ({ command, description, timeoutSeconds, isBackground }) => {
+      console.log(`   [Agent Tool Call] bash: ${command.substring(0, 80)}${description ? ` (${description})` : ""}${isBackground ? " [Background]" : ""}`);
+      return await workspaceAdapter.runBashCommand(workspacePath, command, timeoutSeconds || 60, isBackground || false);
     },
   });
 

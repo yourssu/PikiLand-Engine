@@ -8,6 +8,10 @@ describe("WorkspaceAdapter Test", () => {
     const raw = "https://x-access-token:ghp_1234567890abcdef@github.com/yourssu/PikiLand.git";
     const redacted = adapter.redactSecrets(raw);
     expect(redacted).toBe("https://x-access-token:***@github.com/yourssu/PikiLand.git");
+
+    expect(adapter.redactSecrets("Token: ghp_123456789012345678901234567890")).toContain("ghp_***");
+    expect(adapter.redactSecrets("Key: sk-proj-12345678901234567890123456")).toContain("sk-***");
+    expect(adapter.redactSecrets("Auth: Bearer secret-auth-token-1234567890")).toContain("Bearer ***");
   });
 
   test("should block subshell injection in harness commands", async () => {
@@ -103,6 +107,21 @@ describe("WorkspaceAdapter Test", () => {
 
     const pkillRes = await adapter.manageTask("pkill", null, "non_existent_process_123456");
     expect(typeof pkillRes).toBe("string");
+
+    // Test background task execution and manageTask
+    const bgTaskRes = await adapter.runBashCommand(".", "sleep 2", 10, true);
+    expect(bgTaskRes.exitCode).toBe(0);
+    expect(bgTaskRes.taskId).toBeDefined();
+    expect(bgTaskRes.stdout).toContain("[Background Task Started]");
+
+    const activeListRes = await adapter.manageTask("list", null, null);
+    expect(activeListRes).toContain(bgTaskRes.taskId!);
+
+    const taskStatusRes = await adapter.manageTask("status", bgTaskRes.taskId!, null);
+    expect(taskStatusRes).toContain(bgTaskRes.taskId!);
+
+    const killRes = await adapter.manageTask("kill", bgTaskRes.taskId!, null);
+    expect(killRes).toContain("Successfully killed background task");
   });
 });
 

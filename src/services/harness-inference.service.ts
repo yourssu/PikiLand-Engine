@@ -17,9 +17,12 @@ export class HarnessInferenceService {
       return filenames.includes("mvnw") ? "./mvnw test" : "mvn test";
     }
 
-    // 3. Node.js / Bun
+    // 3. Node.js / Bun / NPM / PNPM / Yarn
     if (filenames.includes("package.json")) {
-      return filenames.includes("bun.lockb") || filenames.includes("bun.lock") ? "bun test" : "npm test";
+      if (filenames.includes("bun.lockb") || filenames.includes("bun.lock")) return "bun test";
+      if (filenames.includes("pnpm-lock.yaml")) return "pnpm test";
+      if (filenames.includes("yarn.lock")) return "yarn test";
+      return "npm test";
     }
 
     // 4. Python
@@ -46,6 +49,11 @@ export class HarnessInferenceService {
       return "make test";
     }
 
+    // 8. Ruby
+    if (filenames.includes("Gemfile") || filenames.includes(".rspec") || filenames.includes("Rakefile")) {
+      return "bundle exec rspec";
+    }
+
     return null;
   }
 
@@ -67,10 +75,16 @@ export class HarnessInferenceService {
         return "mvn test";
       }
 
-      // Node.js / NPM / Bun
+      // Node.js / NPM / Bun / PNPM / Yarn
       if (await this.fileExists(path.join(workspacePath, "package.json"))) {
         if (await this.fileExists(path.join(workspacePath, "bun.lockb")) || await this.fileExists(path.join(workspacePath, "bun.lock"))) {
           return "bun test";
+        }
+        if (await this.fileExists(path.join(workspacePath, "pnpm-lock.yaml"))) {
+          return "pnpm test";
+        }
+        if (await this.fileExists(path.join(workspacePath, "yarn.lock"))) {
+          return "yarn test";
         }
         return "npm test";
       }
@@ -97,6 +111,15 @@ export class HarnessInferenceService {
       // Makefile
       if (await this.fileExists(path.join(workspacePath, "Makefile")) || await this.fileExists(path.join(workspacePath, "makefile"))) {
         return "make test";
+      }
+
+      // Ruby
+      if (
+        await this.fileExists(path.join(workspacePath, "Gemfile")) ||
+        await this.fileExists(path.join(workspacePath, ".rspec")) ||
+        await this.fileExists(path.join(workspacePath, "Rakefile"))
+      ) {
+        return "bundle exec rspec";
       }
 
       return null;

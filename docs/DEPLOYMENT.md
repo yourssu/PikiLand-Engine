@@ -376,7 +376,84 @@ docker compose up -d
 
 ---
 
-## 12. 관련 문서
+## 13. EC2 원격 로그 수집기 프로비저닝 (Fluent Bit Log Ingest)
+
+프로덕션 EC2 인스턴스의 실시간 에러 로그를 PikiLand 수신 서버(`POST /api/logs/ingest`)로 스트리밍하기 위한 설정 가이드입니다.
+
+### 13-1. 원클릭 자동 프로비저닝 (권장 - 방안 A)
+
+1. `/dashboard` 접속 후 대상 저장소 카드의 **[⚡ Provision Fluent Bit (EC2)]** 버튼을 클릭합니다.
+2. EC2 IP, SSH 유저명(`ec2-user` 또는 `ubuntu`), 로그 파일 경로(`/var/log/production/*.log`), 1회용 SSH Private Key(`.pem`)를 입력합니다.
+3. 백엔드가 원격 SSH 접속을 진행하여 Fluent Bit 설치, `fluent-bit.conf` 설정 주입 및 서비스 재시작을 자동 수행합니다.
+4. 설치 완료 직후 백엔드의 임시 SSH 키 파일 및 메모리는 **원천 파기(Zero Trust)**됩니다.
+
+### 13-2. 수동 스크립트 실행 배포 (대안 - 방안 B)
+
+폐쇄망 환경이나 백엔드의 직접 SSH 접속이 제한된 경우, EC2 서버 내부에서 아래 설정과 스크립트를 직접 실행하여 배치할 수 있습니다.
+
+#### `/etc/fluent-bit/fluent-bit.conf`
+```ini
+[SERVICE]
+    Flush           5
+    Daemon          Off
+    Log_Level       info
+    Parsers_File    parsers.conf
+
+[INPUT]
+    Name            tail
+    Path            /var/log/production/*.log
+    Tag             myapp.production
+    Read_from_Head  On
+    Rotate_Wait     5
+
+[FILTER]
+    Name            grep
+    Match           myapp.production
+    Regex           log (error|ERROR|Error|exception|Exception|EXCEPTION|fatal|FATAL|critical|CRITICAL|panic|PANIC|unhandled|Unhandled|UNHANDLED|fail|FAIL|severe|SEVERE|5[0-9][0-9]|traceback|Traceback|NullPointer)
+
+[OUTPUT]
+    Name            http
+    Match           myapp.production
+    Host            <PIKILAND_SERVER_HOST>
+    Port            443
+    URI             /api/logs/ingest
+    Header          Authorization Bearer <LOG_RECEIVER_TOKEN>
+    Header          X-Pikiland-Repo <OWNER/REPO>
+    Format          json
+    tls             On
+    tls.verify      On
+    net.keepalive   On
+```
+
+#### Nginx Reverse Proxy 설정 가이드 (`/etc/nginx/sites-available/pikiland`)
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name pikiland.yourdomain.com;
+
+    ssl_certificate /etc/letsencrypt/live/pikiland.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pikiland.yourdomain.com/privkey.pem;
+
+    location /api/logs/ {
+        proxy_pass http://127.0.0.1:8080/api/logs/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### 서비스 실행
+```bash
+curl -s https://raw.githubusercontent.com/fluent/fluent-bit/master/install.sh | sh
+sudo systemctl restart fluent-bit
+sudo systemctl enable fluent-bit
+```
+
+---
+
+## 14. 관련 문서
 
 - [Architecture & Data Pipeline](./ARCHITECTURE_AND_DATA_PIPELINE.md) — 전체 데이터 흐름 및 컴포넌트 설계
 - [Product Design](./DESIGN.md) — 제품 철학 및 MVP 범위
