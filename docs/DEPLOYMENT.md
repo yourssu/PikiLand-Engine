@@ -1,6 +1,6 @@
 # PikiLand Deployment & Integration Guide
 
-> 마지막 수정: 2026-07-28
+> 마지막 수정: 2026-08-31
 > 이 문서는 PikiLand 서버를 처음부터 배포하고, GitHub App을 등록하여 대상 저장소에 연동하는 전 과정을 설명합니다.
 
 ---
@@ -19,16 +19,16 @@
                          │ HTTP:8080
                          ▼
  ┌─────────────────────────────────────────────────────┐
- │  Docker: pikiland-server (Spring Boot 3.3 / JDK 21) │
+ │  Docker: pikiland-server (TypeScript + Bun / Hono)  │
  │  - OAuth2 Login (GitHub)                            │
- │  - Webhook 수신 & 이벤트 큐                          │
- │  - pikiland.yml 자동 삽입                            │
- │  - 대시보드 & 어드민 UI                              │
+ │  - Webhook 수신 & 이벤트 처리                       │
+ │  - pikiland.yml 자동 삽입                           │
+ │  - 대시보드 & 어드민 UI                             │
  └───────────────────────┬─────────────────────────────┘
-                         │ JDBC:5432
+                         │ SQLite (data/pikiland.sqlite)
                          ▼
  ┌─────────────────────────────────────────────────────┐
- │  Docker: pikiland-postgres (PostgreSQL)             │
+ │  Local SQLite DB (Drizzle ORM)                      │
  └─────────────────────────────────────────────────────┘
                          │ GitHub Actions (워크플로 트리거)
                          ▼
@@ -41,8 +41,8 @@
 ```
 
 > **두 가지 실행 모드**
-> - **Web App (Coordinator)**: 이 저장소(`username/PikiLand`). 웹훅 수신, GitHub App 인증, 대시보드 UI, 워크플로 트리거를 담당합니다.
-> - **CLI (Engine)**: 별도 저장소(`username/PikiLand-Engine`). GitHub Actions에서 실행되어 AI 분석, Ralph Loop, 패치 적용, PR 생성을 수행합니다.
+> - **Web App (Coordinator)**: 이 저장소(`yourssu/PikiLand`). 웹훅 수신, GitHub App 인증, 대시보드 UI, 워크플로 트리거를 담당합니다.
+> - **CLI (Engine)**: 별도 저장소(`yourssu/PikiLand-Engine`). GitHub Actions에서 실행되어 AI 분석, Ralph Loop, 패치 적용, PR 생성을 수행합니다.
 
 ---
 
@@ -133,7 +133,7 @@ GitHub → Settings → Developer settings → GitHub Apps → New GitHub App으
 | **GitHub App name** | `PikiLand-AutoFix` (유니크한 이름) |
 | **Homepage URL** | `https://pikiland.yourdomain.com` |
 | **Callback URL** | `https://pikiland.yourdomain.com/login/oauth2/code/github` |
-| **Setup URL** | `https://pikiland.yourdomain.com/dashboard` |
+| **Setup URL** | `https://pikiland.yourdomain.com/setup` |
 | **Webhook URL** | `https://pikiland.yourdomain.com/api/webhook` |
 | **Webhook Secret** | 안전한 랜덤 문자열 (예: `openssl rand -hex 32` 결과) |
 | **Where can this GitHub App be installed?** | `Any account` 또는 `Only on this account` |
@@ -144,10 +144,10 @@ GitHub → Settings → Developer settings → GitHub Apps → New GitHub App으
 |------|------|------|
 | **Actions** | Read & Write | 워크플로 트리거 및 빌드 로그 다운로드 |
 | **Checks** | Read & Write | CI 상태 확인 |
-| **Contents** | Read & Write | `pikiland.yml` 삽입 및 코드 읽기 |
-| **Issues** | Read & Write | 이슈 이벤트 수신 및 댓글 |
-| **Pull requests** | Read & Write | 패치 PR 생성 |
-| **Workflows** | Read & Write | `.github/workflows/` 파일 작성 |
+| **Contents** | Read & Write | `pikiland.yml` 워크플로 자동 삽입 및 코드 읽기 |
+| **Issues** | Read & Write | 이슈 이벤트 수신 및 내용 분석 |
+| **Pull requests** | Read & Write | 자가 치유 패치 PR 생성 및 상태 확인 |
+| **Workflows** | Read & Write | `.github/workflows/` 파일 작성 및 업데이트 |
 
 ### 3-3. 이벤트 구독
 
@@ -155,13 +155,14 @@ Subscribe to Events 섹션에서 다음 이벤트를 체크합니다.
 
 - `Workflow run` — CI 실패 감지
 - `Issues` — GitHub 이슈 감지
+- `Pull request` — 패치 PR 생성 및 머지/종료 감지 (인시던트 상태 자동 갱신)
 
 ### 3-4. 자격 증명 수집
 
 App 생성 완료 후 다음 5가지 값을 모두 기록해 둡니다.
 
 | 값 | 위치 |
-|----|------|
+|------|------|
 | **App ID** | App 설정 페이지 상단 (예: `1029384`) |
 | **Client ID** | App 설정 페이지 `Client ID` 항목 |
 | **Client Secret** | `Generate a new client secret` 클릭 후 복사 (한 번만 표시됨) |
@@ -184,61 +185,88 @@ PIKILAND_ADMIN_USERS="your_github_username"
 GITHUB_CLIENT_ID="Ov23zXXXXXXXXXXXXXXX"
 GITHUB_CLIENT_SECRET="a1b2c3d4e5f6g7h8i9j0abcdef..."
 
-# PostgreSQL
-DATABASE_URL="jdbc:postgresql://postgres:5432/pikilanddb"
-DATABASE_USER="postgres"
-DATABASE_PASSWORD="pikiland_secure_password_123!"
+# SQLite Database 파일 경로 (컨테이너 기본값: /app/data/pikiland.sqlite)
+DATABASE_PATH="./data/pikiland.sqlite"
 
-# Docker 이미지 (GHCR)
-PIKILAND_IMAGE="ghcr.io/your_github_username/pikiland:latest"
+# PikiLand 웹 서버 공인 도메인 URL (GitHub Actions Runner 로그 역조회용)
+PIKILAND_SERVER_URL="https://pikiland.yourdomain.com"
+
+# EC2 Fluent Bit 원격 로그 수신 인증 Bearer 토큰 (선택)
+LOG_RECEIVER_TOKEN="your_log_receiver_token"
 
 # 디버그 모드 (운영 환경에서 반드시 false)
 DEBUG="false"
 ```
 
-> **참고**: `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET`은 `.env`로도 설정 가능하지만, 보안을 위해 어드민 대시보드(`/admin`)에서 DB에 저장하는 방식을 권장합니다.
+> **참고**: `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET`은 `.env`로도 설정 가능하지만, 보안과 관리 편의를 위해 어드민 대시보드(`/admin`)에서 DB에 저장하는 방식을 권장합니다.
 
 ### 4-2. 컨테이너 실행
 
-```bash
-# (Private 이미지인 경우) GHCR 로그인(PAT 사용)
-echo "GITHUB_PAT" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+#### 방법 1. Docker Compose 실행 (권장)
 
-# 이미지 Pull 및 실행
-docker compose pull
-docker compose up -d
+```bash
+# 최신 소스코드 빌드 및 백그라운드 실행
+docker compose up -d --build
 
 # 로그 확인
 docker compose logs -f pikiland-server
 ```
 
+#### 방법 2. 단독 Docker 명령어로 직접 빌드 및 실행
+
+```bash
+# 이미지 직접 빌드
+docker build -t pikiland-server .
+
+# 데이터 디렉토리 생성 및 컨테이너 실행
+mkdir -p data
+docker run -d \
+  --name pikiland-server \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v "$(pwd)/data:/app/data" \
+  --env-file .env \
+  pikiland-server
+
+# 로그 확인
+docker logs -f pikiland-server
+```
+
+---
+
 ## 5. Step 4 — 어드민 대시보드에서 GitHub App 설정
 
-`/admin` 페이지는 `PIKILAND_ADMIN_USERS`에 등록된 사용자만 접근 가능합니다.
+`/admin` 페이지는 `PIKILAND_ADMIN_USERS`에 등록된 관리자만 접근 가능합니다.
 
 1. `https://pikiland.yourdomain.com` 접속 → GitHub OAuth 로그인.
-2. 로그인 후 헤더의 **⚙️ Admin Settings** 링크 클릭 또는 `/admin` 직접 접속.
-3. **Central System Settings** 폼 입력 후 Save:
+2. 로그인 후 상단 헤더의 **⚙️ Admin Settings** 링크 클릭 또는 `/admin` 직접 접속.
+3. **Central System Settings** 폼 입력 후 저장:
 
 | 필드 | 설명 |
 |------|------|
 | **GitHub App ID** | Step 2에서 수집한 App ID |
-| **GitHub App Private Key** | `.pem` 파일의 전체 내용 (`-----BEGIN RSA PRIVATE KEY-----` 포함) |
-| **GitHub Webhook Secret** | Step 2에서 설정한 Webhook Secret |
-| **GitHub OAuth Client ID** | Step 2에서 수집한 Client ID |
-| **GitHub OAuth Client Secret** | Step 2에서 수집한 Client Secret |
+| **웹훅 Secret (Webhook Secret)** | Step 2에서 설정한 Webhook Secret |
+| **OAuth Client ID** | Step 2에서 수집한 Client ID |
+| **OAuth Client Secret** | Step 2에서 수집한 Client Secret |
+| **PikiLand Web Server URL** | 서버의 공개 HTTPS 주소 (예: `https://pikiland.yourdomain.com`) |
+| **GitHub App 개인키 파일** | 다운로드받은 `.pem` 파일 업로드 (또는 내용 입력) |
+
+4. *(선택)* **중앙 AI Provider 설정 (서버 전용)** 입력 후 저장:
+   - **글로벌 AI Base URL**: Coordinator 서버 측 AI API Base URL (예: `https://api.openai.com/v1`)
+   - **글로벌 AI API Key**: Coordinator 서버 측 AI API 키 (`sk-...`)
+   - **글로벌 AI 모델명**: 사용할 기본 AI 모델 (예: `gpt-4o`)
 
 ---
 
-## 6. Step 5 — 대상 저장소에 GitHub App 설치
+## 6. Step 5 — 대상 저장소에 GitHub App 설치 및 Actions 설정
 
 ### 6-1. App 설치
 
-GitHub → Settings → Applications → Install App 또는 어드민 페이지의 **Install App** 링크에서 대상 저장소 선택 후 설치.
+GitHub → Settings → Applications → Install App 또는 어드민 페이지의 **Install App** 링크에서 대상 저장소 선택 후 설치. 설치 완료 시 `/setup` 페이지로 이동하여 연동 저장소 목록이 확인됩니다.
 
 ### 6-2. 대상 저장소의 GitHub Actions 권한 설정
 
-> **⚠️ 필수 단계**: `pikiland.yml` 내 `permissions: contents: write`가 선언되어 있어도, 저장소 레벨 설정이 Read-only이면 Push가 403으로 실패합니다.
+> **⚠️ 필수 단계**: `pikiland.yml` 내 `permissions: contents: write`가 선언되어 있어도, 저장소 레벨 설정이 Read-only이면 Push 및 PR 생성이 403으로 실패합니다.
 
 ```
 대상 저장소 → Settings → Actions → General → Workflow permissions
@@ -268,11 +296,13 @@ GitHub → Settings → Applications → Install App 또는 어드민 페이지�
 | 설정 항목 | 설명 |
 |-----------|------|
 | **Active** 토글 | ON으로 설정하면 모니터링 시작. 비어있는 Harness는 자동 추론됩니다 |
-| **Harness Command** | 테스트 명령 (예: `./gradlew test`). 비워두면 저장소 파일 분석으로 자동 추론 |
+| **Harness Command** | 테스트 명령 (예: `./gradlew test`, `bun test`). 비워두면 저장소 파일 분석으로 자동 추론 |
 | **AI Model** | 사용할 AI 모델명 (예: `gpt-4o`, `claude-3-5-sonnet-20241022`) |
 | **AI Base URL** | 커스텀 AI API Base URL |
-| **Slack Webhook URL** | Slack Incoming Webhook URL |
+| **Slack Webhook URL** | 비개발자용 장애 요약 및 PR 알림 전송 Slack Webhook URL |
 | **Ralph Max Retries** | Ralph Loop 최대 반복 횟수 (기본값: 3) |
+
+---
 
 ## 7. Step 6 — Harness Command 설정 (Ralph Loop)
 
@@ -280,13 +310,15 @@ Harness Command는 **Red (오류 재현) → Green (패치 통과)**을 반복�
 
 ### 권장 Harness Command 예시
 
-| 프레임워크 | 명령 |
-|------------|------|
+| 프레임워크 / 런타임 | 명령 |
+|-------------------|------|
 | Gradle (Java/Kotlin) | `./gradlew test` |
 | Maven | `mvn test` |
-| Node.js (npm) | `npm test` |
+| Bun | `bun test` |
+| Node.js (npm / yarn / pnpm) | `npm test` |
 | Python (pytest) | `pytest` |
 | Go | `go test ./...` |
+| Rust (Cargo) | `cargo test` |
 | Ruby (RSpec) | `bundle exec rspec` |
 
 ### Harness Status 상태 흐름
@@ -311,7 +343,13 @@ NONE  →  (Auto-Infer 실행)  →  PENDING_CONFIRMATION
 
 ### 8-1. Webhook 수신 확인
 
-GitHub App 설정 페이지 → **Advanced** 탭에서 웹훅 전달 이력을 확인합니다.
+GitHub App 설정 페이지 → **Advanced** 탭에서 웹훅 전달 이력(Recent Deliveries)의 응답 코드가 `200 OK`인지 확인합니다.
+
+### 8-2. 자동 복구(Self-Healing) 및 PR 생성 확인
+
+1. 대상 저장소에서 의도적인 테스트 실패(CI 실패)를 발생시키거나 이슈를 등록합니다.
+2. 대상 저장소의 Actions 탭에서 `PikiLand Self-Healing` (`.github/workflows/pikiland.yml`) 워크플로가 자동 트리거되는지 확인합니다.
+3. 워크플로 완료 후 `pikiland/fix-...` 브랜치 및 패치 PR이 자동 생성되었는지 확인합니다.
 
 ### 8-3. 서버 로그 확인
 
@@ -322,72 +360,18 @@ docker compose logs --tail=100 pikiland-server
 
 ---
 
-## 9. 업그레이드
+## 9. Step 8 — 프로덕션 로그 수집 연동 (Fluent Bit & 1회성 SSH 프로비저닝)
 
-```bash
-docker compose down
-docker compose pull
-docker compose up -d 
-```
+PikiLand는 프로덕션 EC2 서버의 로그를 단방향으로 수집하여 실시간 에러 감지 및 자가 치유(Self-Healing) 파이프라인을 동작시킬 수 있습니다.
 
----
-
-## 10. 트러블슈팅
-
-### 403 Permission to ... denied to github-actions[bot]
-
-**원인**: 대상 저장소 Actions Workflow Permissions이 Read-only.
-
-**해결**: Step 6-2 참고 → `Read and write permissions` 선택 + PR 생성 허용 체크.
-
----
-
-### OAuth 로그인 후 redirect_uri_mismatch
-
-**원인**: GitHub App의 Callback URL이 실제 접속 도메인과 불일치.
-
-**해결**: GitHub App 설정 → Callback URL을 `https://실제도메인/login/oauth2/code/github`로 정확히 입력.
-
----
-
-### Webhook 서명 검증 실패 (403 on /api/webhook)
-
-**원인**: 어드민에 저장된 Webhook Secret과 GitHub App 설정의 Secret이 불일치.
-
-**해결**: `/admin` → Central System Settings → Webhook Secret 재입력.
-
----
-
-### pikiland.yml이 대상 저장소에 생성되지 않음
-
-**원인**: Private Key가 잘못 설정되었거나 App이 해당 저장소에 미설치.
-
-**확인**: `/admin`에서 App ID와 Private Key 재저장. GitHub App 설치 목록에서 대상 저장소 포함 여부 확인.
-
----
-
-## 11. 보안 관련 사항
-
-- **어드민 접근 제한**: `/admin`은 `PIKILAND_ADMIN_USERS`에 등록된 사용자만 접근 가능. `DEBUG=true`는 이 검사를 우회하므로 **운영 환경에서 절대 사용 금지**.
-- **Webhook Secret**: `openssl rand -hex 32`로 최소 32바이트 랜덤 값 사용.
-- **Webhook CSRF 제외**: `/api/webhook`은 CSRF 검사 대상에서 제외됩니다. GitHub HMAC-SHA256 서명 검증이 이를 대체합니다.
-- **AI API Key**: 대상 저장소의 GitHub Actions Secret으로만 저장. PikiLand 서버는 이 키를 보관하지 않습니다.
-- **PII 제거**: Context Bundle을 AI에 전달하기 전 PII와 Secret을 제거합니다. PR 설명에 원본 로그를 포함하지 않습니다.
-
----
-
-## 13. EC2 원격 로그 수집기 프로비저닝 (Fluent Bit Log Ingest)
-
-프로덕션 EC2 인스턴스의 실시간 에러 로그를 PikiLand 수신 서버(`POST /api/logs/ingest`)로 스트리밍하기 위한 설정 가이드입니다.
-
-### 13-1. 원클릭 자동 프로비저닝 (권장 - 방안 A)
+### 9-1. 원클릭 자동 프로비저닝 (권장 - 방안 A)
 
 1. `/dashboard` 접속 후 대상 저장소 카드의 **[⚡ Provision Fluent Bit (EC2)]** 버튼을 클릭합니다.
 2. EC2 IP, SSH 유저명(`ec2-user` 또는 `ubuntu`), 로그 파일 경로(`/var/log/production/*.log`), 1회용 SSH Private Key(`.pem`)를 입력합니다.
 3. 백엔드가 원격 SSH 접속을 진행하여 Fluent Bit 설치, `fluent-bit.conf` 설정 주입 및 서비스 재시작을 자동 수행합니다.
 4. 설치 완료 직후 백엔드의 임시 SSH 키 파일 및 메모리는 **원천 파기(Zero Trust)**됩니다.
 
-### 13-2. 수동 스크립트 실행 배포 (대안 - 방안 B)
+### 9-2. 수동 스크립트 실행 배포 (대안 - 방안 B)
 
 폐쇄망 환경이나 백엔드의 직접 SSH 접속이 제한된 경우, EC2 서버 내부에서 아래 설정과 스크립트를 직접 실행하여 배치할 수 있습니다.
 
@@ -425,25 +409,6 @@ docker compose up -d
     net.keepalive   On
 ```
 
-#### Nginx Reverse Proxy 설정 가이드 (`/etc/nginx/sites-available/pikiland`)
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name pikiland.yourdomain.com;
-
-    ssl_certificate /etc/letsencrypt/live/pikiland.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/pikiland.yourdomain.com/privkey.pem;
-
-    location /api/logs/ {
-        proxy_pass http://127.0.0.1:8080/api/logs/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
 #### 서비스 실행
 ```bash
 curl -s https://raw.githubusercontent.com/fluent/fluent-bit/master/install.sh | sh
@@ -453,7 +418,70 @@ sudo systemctl enable fluent-bit
 
 ---
 
-## 14. 관련 문서
+## 10. 업그레이드
+
+```bash
+git pull
+docker compose down
+docker compose up -d --build
+```
+
+---
+
+## 11. 트러블슈팅
+
+### 403 Permission to ... denied to github-actions[bot]
+
+**원인**: 대상 저장소 Actions Workflow Permissions이 Read-only.
+
+**해결**: Step 5-2 참고 → `Read and write permissions` 선택 + PR 생성 허용 체크.
+
+---
+
+### OAuth 로그인 후 redirect_uri_mismatch
+
+**원인**: GitHub App의 Callback URL이 실제 접속 도메인과 불일치.
+
+**해결**: GitHub App 설정 → Callback URL을 `https://실제도메인/login/oauth2/code/github`로 정확히 입력.
+
+---
+
+### Webhook 서명 검증 실패 (401 on /api/webhook)
+
+**원인**: 어드민에 저장된 Webhook Secret과 GitHub App 설정의 Secret이 불일치.
+
+**해결**: `/admin` → Central System Settings → Webhook Secret 재입력 후 저장.
+
+---
+
+### pikiland.yml이 대상 저장소에 생성되지 않음
+
+**원인**: Private Key가 잘못 설정되었거나 App이 해당 저장소에 미설치.
+
+**확인**: `/admin`에서 App ID와 Private Key 재저장. GitHub App 설치 목록에서 대상 저장소 포함 여부 확인.
+
+---
+
+### 로그 수집기 전송 실패 (401 Unauthorized on /api/logs/ingest)
+
+**원인**: 요청 헤더의 `Authorization: Bearer <LOG_RECEIVER_TOKEN>` 또는 `X-Pikiland-Repo` 헤더가 대상 저장소 설정과 불일치.
+
+**해결**: `/dashboard`에서 저장소의 로그 수신 토큰 확인 및 `fluent-bit.conf` 헤더 재설정.
+
+---
+
+## 12. 보안 관련 사항
+
+- **어드민 접근 제한**: `/admin`은 `PIKILAND_ADMIN_USERS`에 등록된 사용자만 접근 가능. `DEBUG=true`는 이 검사를 우회하므로 **운영 환경에서 절대 사용 금지**.
+- **Webhook Secret**: `openssl rand -hex 32`로 최소 32바이트 랜덤 값 사용.
+- **Webhook CSRF 제외**: `/api/webhook`은 CSRF 검사 대상에서 제외됩니다. GitHub HMAC-SHA256 서명 검증이 이를 대체합니다.
+- **AI API Key 격리**: 실행 엔진(CLI)의 패치 생성용 AI API Key는 대상 저장소의 GitHub Actions Secret으로만 저장됩니다.
+- **PII 제거**: Context Bundle을 AI에 전달하기 전 PII와 Secret을 제거합니다. PR 설명에 원본 로그를 포함하지 않습니다.
+- **Zero Trust SSH 프로비저닝**: 원격 EC2 Fluent Bit 자동 설치 시 사용된 SSH Private Key는 작업 완료 즉시 메모리와 임시 파일에서 영구 삭제됩니다.
+
+---
+
+## 13. 관련 문서
 
 - [Architecture & Data Pipeline](./ARCHITECTURE_AND_DATA_PIPELINE.md) — 전체 데이터 흐름 및 컴포넌트 설계
 - [Product Design](./DESIGN.md) — 제품 철학 및 MVP 범위

@@ -81,7 +81,7 @@ bun run build
 일반 테스트:
 
 ```bash
-./gradlew clean test 
+bun test
 ```
 
 ## 문서
