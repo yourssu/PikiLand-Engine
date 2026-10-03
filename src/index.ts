@@ -50,8 +50,8 @@ async function main() {
   const gitUserName = getEnvOrProperty("PIKILAND_GIT_USER_NAME");
   const gitUserEmail = getEnvOrProperty("PIKILAND_GIT_USER_EMAIL");
 
-  if (!eventType) {
-    console.error("Error: PIKILAND_EVENT_TYPE environment variable is required.");
+  if (eventType !== "production_log") {
+    console.error("Error: PIKILAND_EVENT_TYPE must be production_log.");
     process.exit(1);
   }
   if (!token) {

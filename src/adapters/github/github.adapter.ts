@@ -7,6 +7,12 @@ export class GithubAdapter {
     return new Octokit({ auth: token });
   }
 
+  public async findOpenPullRequest(repoFullName: string, branch: string, token: string): Promise<string | null> {
+    const [owner, repo] = repoFullName.split("/");
+    const {data} = await this.getOctokit(token).rest.pulls.list({owner,repo,state:"open",head:`${owner}:${branch}`,per_page:1});
+    return data[0]?.html_url || null;
+  }
+
   public async fetchIssueBody(repoFullName: string, issueNumberStr: string, token: string): Promise<string> {
     const [owner, repo] = repoFullName.split("/");
     if (!owner || !repo) {

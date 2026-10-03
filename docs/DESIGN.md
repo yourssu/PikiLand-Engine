@@ -1,5 +1,7 @@
 # PikiLand Product Design
 
+> 2026-10-02: 입력은 production 로그로 한정합니다. 현재 구현 및 검증 계약은 [PRODUCTION_PIPELINE.md](PRODUCTION_PIPELINE.md)를 우선하며, 아래 다중 입력 설명은 이전 목표 구조입니다.
+
 > 상태: MVP 방향 합의 중 · 마지막 수정: 2026-07-15
 >
 > 이 문서는 PikiLand의 제품 기준점입니다. 현재 구현은 [README](../README.md), 기술 구조는 [Architecture & Data Pipeline](./ARCHITECTURE_AND_DATA_PIPELINE.md)을 참고합니다.

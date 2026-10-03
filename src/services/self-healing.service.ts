@@ -1,294 +1,94 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import { CliConfig } from "../domain/models";
-import { LogTruncator } from "../domain/log-truncator";
+import { SlackAdapter } from "../adapters/slack/slack.adapter";
+import { AiAnalysisResult, CliConfig } from "../domain/models";
 import { GithubAdapter } from "../adapters/github/github.adapter";
 import { WorkspaceAdapter } from "../adapters/workspace/workspace.adapter";
 import { AiAdapter } from "../adapters/ai/ai.adapter";
-import { SlackAdapter } from "../adapters/slack/slack.adapter";
-import { HarnessInferenceService } from "./harness-inference.service";
+import { ProductionVerification } from "./production-verification";
 
 export class SelfHealingService {
-  private logTruncator: LogTruncator;
-  private githubAdapter: GithubAdapter;
-  private workspaceAdapter: WorkspaceAdapter;
-  private aiAdapter: AiAdapter;
-  private slackAdapter: SlackAdapter;
-  private harnessInferenceService: HarnessInferenceService;
+  private githubAdapter = new GithubAdapter();
+  private workspaceAdapter = new WorkspaceAdapter();
+  private aiAdapter = new AiAdapter();
 
-  constructor() {
-    this.logTruncator = new LogTruncator();
-    this.githubAdapter = new GithubAdapter();
-    this.workspaceAdapter = new WorkspaceAdapter();
-    this.aiAdapter = new AiAdapter();
-    this.slackAdapter = new SlackAdapter();
-    this.harnessInferenceService = new HarnessInferenceService();
-  }
-
-  public async run(config: CliConfig): Promise<void> {
-    console.log(`Starting TS-Bun CLI Self-Healing for ${config.repoName} on workspace: ${config.workspacePath}`);
-
-    let logContent = config.logContent;
-
-    // Download log or issue body dynamically if logContent is empty or if eventType is production_log
-    if (config.eventType === "production_log" || !logContent || logContent.trim().length === 0) {
-      if (!config.runId) {
-        throw new Error("Either PIKILAND_LOG_CONTENT or a valid PIKILAND_RUN_ID is required.");
-      }
-      if (config.eventType === "workflow_run") {
-        console.log(`[CLI] Log content omitted. Downloading workflow logs for Run ID: ${config.runId} in ${config.repoName}`);
-        const rawLogs = await this.githubAdapter.downloadWorkflowLogs(config.repoName, config.runId, config.token);
-        logContent = this.logTruncator.truncateLogForAi(rawLogs, 300);
-      } else if (config.eventType === "issues") {
-        console.log(`[CLI] Log content omitted. Fetching issue body for Issue #${config.runId} in ${config.repoName}`);
-        logContent = await this.githubAdapter.fetchIssueBody(config.repoName, config.runId, config.token);
-      } else if (config.eventType === "production_log") {
-        let rawServerUrl = config.pikilandServerUrl || process.env.PIKILAND_SERVER_URL;
-        let serverUrl = (rawServerUrl && rawServerUrl.trim().length > 0) ? rawServerUrl.trim() : "https://pikiland.yourssu.com";
-        if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) {
-          serverUrl = `https://${serverUrl}`;
-        }
-        if (serverUrl.startsWith("http://") && !serverUrl.includes("localhost") && !serverUrl.includes("127.0.0.1")) {
-          serverUrl = serverUrl.replace("http://", "https://");
-        }
-        console.log(`[CLI] Fetching 100% full raw log via HTTPS (Port 443) from PikiLand Web App (${serverUrl}) for Hash: ${config.runId}`);
-        try {
-          const resp = await fetch(`${serverUrl}/api/settings/incidents/detail?hash=${config.runId}`, {
-            headers: {
-              "Authorization": `Bearer ${config.token}`
-            }
-          });
-          if (resp.ok) {
-            const data = (await resp.json()) as { rawLog?: string; normalizedSignature?: string };
-            logContent = data.rawLog || data.normalizedSignature || `Production Error Incident Hash: ${config.runId}`;
-            console.log(`[CLI] Successfully retrieved 100% full raw log (${logContent.length} chars) from PikiLand Web App.`);
-          } else {
-            const errMsg = `Reverse lookup API returned HTTP ${resp.status} for Hash: ${config.runId}`;
-            console.error(`[CLI] ${errMsg}`);
-            throw new Error(errMsg);
-          }
-        } catch (e: unknown) {
-          const err = e as Error;
-          console.error("[CLI] Reverse lookup API fetch failed:", err.message || err);
-          throw new Error(`Reverse lookup failed for incident hash ${config.runId}: ${err.message || err}`);
-        }
-      }
-    }
-
-    if (!logContent || logContent.trim().length === 0) {
-      throw new Error(`Failed to acquire log content or issue body for event: ${config.eventType}, run_id: ${config.runId}`);
-    }
-
-    // 1. Safety Check: Verify presence of AGENTS.md or AI.md
-    const allowedAgentFiles = ["AGENTS.md", "agents.md", ".agents.md", "AI.md", "ai.md"];
-    let agentsFileExists = false;
-    for (const filename of allowedAgentFiles) {
+  public async run(config:CliConfig):Promise<void> {
+    if(config.eventType!=="production_log") throw new Error("Only production_log input is supported");
+    if(!config.runId || !/^[a-f0-9]{64}$/.test(config.runId)) throw new Error("A production incident hash is required");
+    const server=new URL(config.pikilandServerUrl || "https://pikiland.yourssu.com");
+    if(server.protocol!=="https:" || server.username || server.password || server.search || server.hash || server.pathname!=="/") throw new Error("Verified HTTPS coordinator origin required");
+    let outcome="FAILED";
+    let summary:AiAnalysisResult|undefined;
+    const prUrls:string[]=[];
+    let issueUrl:string|null=null;
+    try {
+      const response=await fetch(`${server.origin}/api/settings/incidents/detail?hash=${config.runId}`,{
+        headers:{Authorization:`Bearer ${config.token}`},redirect:"error",signal:AbortSignal.timeout(10000)});
+      if(!response.ok) throw new Error(`Evidence fetch failed (${response.status})`);
+      const text=await response.text();
+      if(Buffer.byteLength(text)>65536) throw new Error("Evidence bundle too large");
+      const detail=JSON.parse(text) as {repositoryFullName?:string;rawLog?:string};
+      if(detail.repositoryFullName!==config.repoName || !detail.rawLog) throw new Error("Evidence repository mismatch or missing evidence");
+      const evidence=this.workspaceAdapter.redactSecrets(detail.rawLog);
+      let ruleId="explicit_error", service="legacy", route="all";
       try {
-        await fs.access(path.join(config.workspacePath, filename));
-        agentsFileExists = true;
-        break;
-      } catch {
-        // file not found, check next
-      }
-    }
-
-    if (!agentsFileExists) {
-      console.error("PikiLand execution DENIED: No 'AGENTS.md' or 'AI.md' file found in the root of the repository.");
-      throw new Error("Execution denied: Missing AGENTS.md or AI.md safety file.");
-    }
-    console.log("Safety check passed: AGENTS.md or AI.md file found.");
-
-    // 2. Pre-patch Harness Check (Bug Reproduction Gate)
-    let harnessCmd = config.harnessCmd;
-    if (!harnessCmd || harnessCmd.trim().length === 0) {
-      const inferred = await this.harnessInferenceService.inferHarnessCmdFromWorkspace(config.workspacePath);
-      if (inferred) {
-        harnessCmd = inferred;
-        console.log(`[Harness] Smart runtime-inferred harness command: ${harnessCmd}`);
-      }
-    }
-
-    if (config.eventType === "workflow_run" && harnessCmd && harnessCmd.trim().length > 0) {
-      console.log(`[Harness] Executing pre-patch harness command to reproduce CI failure: ${harnessCmd}`);
-      const hResBefore = await this.workspaceAdapter.runHarness(config.workspacePath, harnessCmd);
-      if (hResBefore.success) {
-        console.warn("[Harness Warning] Tests currently pass on workspace. CI failure might be due to linting, build, typecheck, or specific integration tests.");
-        console.warn("[Harness Warning] Proceeding with AI error log diagnostics instead of hard aborting.");
-      } else {
-        console.log("[Harness] Bug reproduction SUCCEEDED: Tests failed as expected on buggy workspace. Proceeding to patch generation.");
-      }
-    } else {
-      console.log(`[Harness] Pre-patch bug reproduction check SKIPPED for event '${config.eventType}'.`);
-    }
-
-    // 3. AI Analysis & Diagnostics (AI directly edits files in workspace via OpenCode tools)
-    const aiResult = await this.aiAdapter.analyzeError(config, logContent, config.workspacePath);
-
-    // If prNeeded is true, ignore issue-related fields and prNotNeededReason completely
-    if (aiResult.prNeeded) {
-      aiResult.issueNeeded = false;
-      aiResult.issueTitle = null;
-      aiResult.issueBody = null;
-      aiResult.prNotNeededReason = null;
-    }
-
-    const prUrls: string[] = [];
-
-    if (aiResult.prNeeded) {
-      console.log(`AI requested PR. Evaluating workspace edits for the Single Best PR...`);
-
-      let baseBranch = config.targetBranch;
-      if (!baseBranch || baseBranch.trim().length === 0) {
-        baseBranch = await this.workspaceAdapter.getCurrentBranch(config.workspacePath);
-      }
-      if (baseBranch === "HEAD") {
-        baseBranch = "main";
-      }
-
-      let isVerified = false;
-
-      // 4. Direct Harness Verification on AI-edited workspace
-      if (!harnessCmd || harnessCmd.trim().length === 0) {
-        console.log(`[Harness] No harness command specified. Accepting AI in-place workspace edits.`);
-        isVerified = true;
-      } else {
-        console.log(`[Harness] Executing post-patch harness command directly on workspace: ${harnessCmd}`);
-        const hRes = await this.workspaceAdapter.runHarness(config.workspacePath, harnessCmd);
-
-        if (hRes.success) {
-          console.log(`[Harness] Direct workspace verification SUCCEEDED! All tests passed.`);
-          isVerified = true;
-        } else {
-          console.error(`[Harness] Initial workspace verification FAILED. Initiating Ralph Loop refinement...`);
-          
-          const triedHarnessOutputCounts = new Map<string, number>();
-          let lastHarnessOutput = hRes.output;
-
-          for (let retry = 1; retry <= config.maxRetries; retry++) {
-            console.log(`[Ralph Loop] Refinement Attempt ${retry}/${config.maxRetries}`);
-            try {
-              const trimmedOutput = this.logTruncator.truncateLogForAi(lastHarnessOutput, 150);
-              const count = (triedHarnessOutputCounts.get(trimmedOutput) || 0) + 1;
-              triedHarnessOutputCounts.set(trimmedOutput, count);
-              if (count > 2) {
-                console.error("[Ralph Loop] Infinite Loop Guard: Duplicate harness output detected. Aborting refinement.");
-                break;
-              }
-
-              const refinedResult = await this.aiAdapter.refinePatch(
-                config,
-                logContent,
-                config.workspacePath,
-                trimmedOutput
-              );
-              if (!refinedResult || !refinedResult.prNeeded) break;
-
-              console.log(`[Harness] Executing post-refinement harness verification: ${harnessCmd}`);
-              const hResRetry = await this.workspaceAdapter.runHarness(config.workspacePath, harnessCmd);
-              if (hResRetry.success) {
-                console.log(`[Harness] Refinement SUCCEEDED on attempt ${retry}! All tests passed.`);
-                isVerified = true;
-                break;
-              }
-              lastHarnessOutput = hResRetry.output;
-            } catch (ex) {
-              console.error("Error in refinement loop:", ex);
-              break;
-            }
-          }
+        const bundle=JSON.parse(evidence);
+        if(bundle.source!=="production_log" || bundle.repository!==config.repoName || bundle.incidentId!==config.runId || bundle.schemaVersion!==1 || !bundle.observation?.quality?.complete) {
+          outcome="NEEDS_EVIDENCE";return;
         }
-      }
-
-      // Publish PR directly from verified workspace
-      if (isVerified) {
-        try {
-          const hashTag = config.fingerprintHash ? config.fingerprintHash.trim() : `${Date.now()}`;
-          const branchName = `pikiland/fix-${hashTag}`;
-          const prTitle = aiResult.prTitle || "fix: automated AI bug patch";
-          const prBody = aiResult.prBody || "Automated fix proposed by PikiLand AI";
-
-          await this.workspaceAdapter.commitAndPush(
-            config.workspacePath,
-            branchName,
-            prTitle,
-            config.token,
-            config.repoName,
-            config.gitUserName,
-            config.gitUserEmail
-          );
-
-          let detailedPrBody = prBody;
-          if (aiResult.causeDescription) {
-            detailedPrBody += `\n\n### 🔍 Technical Cause Analysis\n${aiResult.causeDescription}`;
-          }
-
-          detailedPrBody += `\n\n---\nAuthored by PikiLand Engine\nPikiLand Incident Fingerprint: ${hashTag}`;
-
-          console.log(`Creating PR for branch ${branchName} -> ${baseBranch}`);
-          const prUrl = await this.githubAdapter.createPullRequest(
-            config.repoName,
-            prTitle,
-            detailedPrBody,
-            branchName,
-            baseBranch,
-            config.token
-          );
-          if (prUrl) {
-            prUrls.push(prUrl);
-            console.log(`Successfully created PR: ${prUrl}`);
-          }
-        } catch (prErr) {
-          console.error("Failed to commit/push/create PR:", prErr);
+        ruleId=bundle.observation.ruleId;
+        service=bundle.observation.service;route=bundle.observation.route;
+      } catch { /* legacy redacted production errors still require an explicit_error policy */ }
+      const agentFiles=["AGENTS.md","AI.md","agents.md","ai.md",".agents.md"];
+      if(!(await Promise.all(agentFiles.map(f=>fs.access(path.join(config.workspacePath,f)).then(()=>true,()=>false)))).some(Boolean)) throw new Error("Missing AGENTS.md or AI.md safety file");
+      const diagnosis=await this.aiAdapter.diagnose(config,evidence,config.workspacePath);
+      summary=diagnosis;
+      if(!diagnosis.prNeeded) {
+        if(diagnosis.issueNeeded && diagnosis.issueTitle && diagnosis.issueBody) {
+          issueUrl=await this.githubAdapter.createIssue(config.repoName,this.workspaceAdapter.redactSecrets(diagnosis.issueTitle),this.workspaceAdapter.redactSecrets(diagnosis.issueBody),config.token);
         }
-      } else {
-        console.warn("No PR candidates passed harness verification. No PR was created.");
-        throw new Error("Self-healing failed: All patch candidates failed harness verification (Ralph Loop exhausted).");
+        outcome="NO_PR";return;
       }
-    } else {
-      console.log("AI determined no PR fix is required or possible.");
-    }
-
-    // 4. Issue Creation if PR was not created and prNeeded is false and issueNeeded is true
-    let issueUrl: string | null = null;
-    if (!aiResult.prNeeded && prUrls.length === 0 && aiResult.issueNeeded && aiResult.issueTitle && aiResult.issueBody) {
-      console.log("Creating GitHub Issue as requested by AI analysis...");
-      try {
-        let issueBodyWithLog = aiResult.issueBody;
-        if (logContent && logContent.trim().length > 0) {
-          issueBodyWithLog += `\n\n---\n\n<details>\n<summary>🔍 원본 에러 로그 보기</summary>\n\n\`\`\`\n${logContent}\n\`\`\`\n</details>`;
-        }
-        issueUrl = await this.githubAdapter.createIssue(
-          config.repoName,
-          aiResult.issueTitle,
-          issueBodyWithLog,
-          config.token
-        );
-        if (issueUrl) {
-          console.log(`Successfully created GitHub Issue: ${issueUrl}`);
-        }
-      } catch (issueErr) {
-        console.error("Failed to create GitHub Issue:", issueErr);
+      const gate=new ProductionVerification(config.workspacePath,this.workspaceAdapter);
+      const policy=await gate.load(ruleId,service,route);
+      if(!policy) {outcome="NEEDS_EVIDENCE";return;}
+      const red=await gate.reproduce(policy);
+      if(!red.reproduced) {outcome="NEEDS_EVIDENCE";return;}
+      const patchConfig={...config,allowedSourcePaths:policy.allowedSourcePaths,protectedPaths:policy.protectedPaths};
+      const context=`${evidence}\nConfirmed expected behavior: ${policy.expectedBehavior}\nReproduced failure: ${red.output}`;
+      let result=await this.aiAdapter.analyzeError(patchConfig,context,config.workspacePath);
+      if(!result.prNeeded) {outcome="NO_PR";return;}
+      let verified=await gate.verify(policy);
+      for(let retry=0;!verified.success && retry<Math.min(config.maxRetries,3);retry++) {
+        result=await this.aiAdapter.refinePatch(patchConfig,context,config.workspacePath,verified.output);
+        if(!result.prNeeded) break;
+        verified=await gate.verify(policy);
       }
-    }
-
-    // 5. Slack Notification (Always sent regardless of prNeeded)
-    if (config.slackWebhookUrl && config.slackWebhookUrl.trim().length > 0) {
-      await this.slackAdapter.sendNotification(
-        config.slackWebhookUrl,
-        logContent,
-        aiResult,
-        config.eventType,
-        config.repoName,
-        config.runId || "cli",
-        prUrls,
-        issueUrl
-      );
-    } else {
-      console.log("Slack webhook is not set. Diagnostics result:");
-      console.log("Summary:", aiResult.summary);
-      console.log("Cause:", aiResult.causeDescription);
-      console.log("PR Candidates created:", prUrls);
-      if (issueUrl) console.log("GitHub Issue created:", issueUrl);
+      if(!verified.success || !result.prNeeded) {outcome="NEEDS_EVIDENCE";return;}
+      await gate.assertScope(policy);
+      const changedFiles=await gate.changedFiles();
+      if(!changedFiles.length) {outcome="NO_PR";return;}
+      const branch=`pikiland/fix-${config.runId}`;
+      const existing=await this.githubAdapter.findOpenPullRequest(config.repoName,branch,config.token);
+      if(existing) {prUrls.push(existing);outcome="PR_CREATED";return;}
+      const title=result.prTitle || "fix: verified production behavior";
+      await this.workspaceAdapter.commitAndPush(config.workspacePath,branch,title,config.token,config.repoName,config.gitUserName,config.gitUserEmail,changedFiles);
+      const body=this.workspaceAdapter.redactSecrets(`${result.prBody || ""}\n\nVerification: incident-specific reproduction failed before the patch and passed after; regression command passed.\nExpected behavior: ${policy.expectedBehavior}\n\nPikiLand Incident Fingerprint: ${config.runId}`);
+      const prUrl=await this.githubAdapter.createPullRequest(config.repoName,title,body,branch,config.targetBranch || "main",config.token);
+      if(!prUrl) throw new Error("Verified patch publication returned no PR");
+      prUrls.push(prUrl);
+      outcome="PR_CREATED";
+    } finally {
+      // Job result updates never create new incidents. Failed reporting fails the run.
+      const result=await fetch(`${server.origin}/api/production/incidents/${config.runId}/result`,{
+        method:"POST",headers:{Authorization:`Bearer ${config.token}`,"Content-Type":"application/json"},body:JSON.stringify({outcome}),redirect:"error",signal:AbortSignal.timeout(10000)});
+      if(!result.ok) throw new Error(`Incident result reporting failed (${result.status})`);
+      if(config.slackWebhookUrl && summary) {
+        await new SlackAdapter().sendNotification(config.slackWebhookUrl, "", {...summary,
+          prNeeded:outcome==="PR_CREATED", prNotNeededReason:outcome==="PR_CREATED"?null:`Production verification outcome: ${outcome}`},
+          "production_log",config.repoName,config.runId,prUrls,issueUrl);
+      }
+      console.log(`Production incident ${config.runId}: ${outcome}`);
     }
   }
 }

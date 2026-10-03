@@ -1,5 +1,7 @@
 # Architecture & Data Pipeline
 
+> 2026-10-02: 입력은 production 로그로 한정합니다. 현재 구현 및 검증 계약은 [PRODUCTION_PIPELINE.md](PRODUCTION_PIPELINE.md)를 우선하며, 아래 다중 입력 설명은 이전 목표 구조입니다.
+
 > 상태: 목표 구조 초안 · 마지막 수정: 2026-07-15
 >
 > 이 문서는 검증된 PR을 만드는 목표 구조를 설명합니다. 제품 범위와 우선순위는 [Product Design](./DESIGN.md)을 우선합니다.
