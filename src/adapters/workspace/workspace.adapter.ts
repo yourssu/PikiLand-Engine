@@ -1,3 +1,4 @@
+import { lstatSync } from "fs";
 import { execa } from "execa";
 import { simpleGit, SimpleGit } from "simple-git";
 import * as fs from "fs/promises";
@@ -32,6 +33,13 @@ export class WorkspaceAdapter {
       return true;
     }
 
+    // Refuse symlinks at every repository-relative component, including parents of new files.
+    let component = normWorkspace;
+    for (const part of relative.split(path.sep)) {
+      component = path.join(component, part);
+      try { if (lstatSync(component).isSymbolicLink()) return true; } catch { /* new file */ }
+    }
+
     // 2. Restricted System & Secret Directories/Files Guard
     const parts = relative.split(path.sep);
     for (const part of parts) {
@@ -57,14 +65,14 @@ export class WorkspaceAdapter {
 
   public async runHarness(workspacePath: string, harnessCmd: string, timeoutMs: number = 180000): Promise<HarnessResult> {
     if (!harnessCmd || harnessCmd.trim().length === 0) {
-      return { success: false, output: "Empty harness command.", exitCode: 1 };
+      return { success: false, output: "Empty harness command.", exitCode: 1, executionError: true };
     }
 
     for (const pattern of DANGEROUS_SUB_SHELL_PATTERNS) {
       if (harnessCmd.includes(pattern)) {
         const errMsg = `Security Error: Harness command contains disallowed subshell pattern '${pattern}'. Execution aborted.`;
         console.error(`[Harness Security] ${errMsg}`);
-        return { success: false, output: errMsg, exitCode: 1 };
+        return { success: false, output: errMsg, exitCode: 1, executionError: true };
       }
     }
 
@@ -74,6 +82,9 @@ export class WorkspaceAdapter {
         shell: true,
         reject: false,
         timeout: timeoutMs,
+        extendEnv: false,
+        env: Object.fromEntries(["PATH","HOME","USER","TMPDIR","LANG","LC_ALL","JAVA_HOME","BUN_INSTALL","SystemRoot"]
+          .filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]!])),
       })`${harnessCmd}`;
 
       const stdout = result.stdout || "";
@@ -93,6 +104,7 @@ export class WorkspaceAdapter {
         success: false,
         output,
         exitCode: execError.exitCode ?? 1,
+        executionError: true,
       };
     }
   }
@@ -229,7 +241,8 @@ export class WorkspaceAdapter {
     token: string,
     repoFullName: string,
     gitUserName?: string,
-    gitUserEmail?: string
+    gitUserEmail?: string,
+    verifiedFiles?: string[]
   ): Promise<void> {
     const git: SimpleGit = simpleGit(workspacePath);
 
@@ -241,12 +254,14 @@ export class WorkspaceAdapter {
     await git.addConfig("user.email", userEmail, false, "local");
 
     await git.checkoutLocalBranch(branchName);
-    await git.add(".");
+    if (!verifiedFiles?.length) throw new Error("No verified source files to publish");
+    await git.add(verifiedFiles);
     await git.commit(commitMsg);
 
     // Authenticated remote URL
     const remoteUrl = `https://x-access-token:${token}@github.com/${repoFullName}.git`;
-    await git.push(remoteUrl, branchName, ["--set-upstream", "--force"]);
+    try { await git.push(remoteUrl, branchName, ["--set-upstream"]); }
+    catch (e) { throw new Error(this.redactSecrets(String(e))); }
   }
 
   public async listDirectory(workspacePath: string, relativePath: string = "."): Promise<string> {

@@ -16,6 +16,7 @@ export const AiAnalysisResultSchema = z.object({
 export type AiAnalysisResult = z.infer<typeof AiAnalysisResultSchema>;
 
 export interface HarnessResult {
+  readonly executionError?: boolean;
   readonly success: boolean;
   readonly output: string;
   readonly exitCode: number;
@@ -23,6 +24,8 @@ export interface HarnessResult {
 
 export interface CliConfig {
   readonly eventType: string;
+  readonly allowedSourcePaths?: string[];
+  readonly protectedPaths?: string[];
   readonly logContent: string;
   readonly token: string;
   readonly repoName: string;

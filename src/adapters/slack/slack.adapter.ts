@@ -84,8 +84,9 @@ export class SlackAdapter {
     issueUrl?: string | null
   ): string {
     const title = `🚨 *[${repoName}] AI 시스템 장애 감지 및 자가 치유 알림*`;
-    const context =
-      eventType === "issues"
+    const context = eventType === "production_log"
+      ? `• *발생 이벤트*: 운영 로그 관측\n• *인시던트*: ${runId}`
+      : eventType === "issues"
         ? "• *발생 이벤트*: 새로운 이슈/건의 접수"
         : `• *발생 이벤트*: ${eventType}\n• *실행 정보(Run ID/Hash)*: <https://github.com/${repoName}/actions/runs/${runId}|${runId}>`;
 

@@ -1,6 +1,8 @@
 # PikiLand Engine (CLI Execution Engine)
 
-PikiLand Engine은 GitHub Actions Runner 내부에서 실행되어 CI 빌드 실패, GitHub Issue, 프로덕션 에러 로그를 분석하고, Harness 기반의 자동 코드 패치 및 검증된 Pull Request(PR)와 Slack 알림을 생성하는 **TypeScript + Bun 기반 고속 자가 치유(Self-Healing) CLI 엔진**입니다.
+PikiLand Engine은 production 로그에서 생성된 incident를 읽기 전용으로 진단하고, 등록된 재현 테스트의 Red → Green 및 회귀 검증을 통과한 소스 수정만 PR로 만드는 실행 엔진입니다. workflow 실패와 Issue 생성은 감지 입력으로 지원하지 않습니다.
+
+현재 실행 계약과 필수 검증 정책은 [Production Pipeline](docs/PRODUCTION_PIPELINE.md)을 참고하세요. 아래 이전 설정 예시보다 이 계약이 우선합니다.
 
 제품 결정은 [Product Design](docs/DESIGN.md), 전체 목표 구조는 [Architecture & Data Pipeline](docs/ARCHITECTURE_AND_DATA_PIPELINE.md)을 기준으로 합니다.
 
@@ -48,7 +50,7 @@ bun run build
 | 변수명 | 설명 및 용도 | 필수 여부 |
 | --- | --- | :---: |
 | `PIKILAND_CLI` | CLI 모드 활성화 플래그 (`true` 또는 `--cli` 플래그) | 필수 |
-| `PIKILAND_EVENT_TYPE` | 감지된 이벤트 유형 (`workflow_run`, `issues`, `production_log`) | 필수 |
+| `PIKILAND_EVENT_TYPE` | 감지된 이벤트 유형 (`production_log`만 지원) | 필수 |
 | `GITHUB_TOKEN` | GitHub API 통신 및 브랜치 푸시/PR 생성을 위한 토큰 | 필수 |
 | `GITHUB_REPOSITORY` | 대상 리포지토리명 (`owner/repo`) | 필수 |
 | `PIKILAND_LOG_CONTENT` | 분석 대상 에러 로그 또는 이슈 내용 (생략 시 API로 역추적 다운로드) | 선택 |
