@@ -1,3 +1,6 @@
+import {mkdtemp,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import {describe,expect,it,spyOn} from "bun:test";
 import {SelfHealingService} from "./self-healing.service";
 import {CliConfig} from "../domain/models";
@@ -26,5 +29,31 @@ describe("production-only engine",()=>{
       return new Response(JSON.stringify({repositoryFullName:config.repoName,rawLog:JSON.stringify({schemaVersion:1,source:"production_log",repository:config.repoName,incidentId:config.runId,observation:{quality:{complete:false}}})}));
     }) as typeof globalThis.fetch);
     try{await service.run(config);expect(diagnosis).not.toHaveBeenCalled();}finally{fetch.mockRestore();diagnosis.mockRestore();}
+  });
+});
+
+describe("optional repository instructions",()=>{
+  for(const prNeeded of [false,true]) it(`diagnoses without instruction files (prNeeded=${prNeeded})`,async()=>{
+    const workspacePath=await mkdtemp(join(tmpdir(),"pikiland-instructions-"));
+    const service=new SelfHealingService();
+    const diagnosis=spyOn((service as any).aiAdapter,"diagnose").mockResolvedValue({prNeeded,issueNeeded:false});
+    const patch=spyOn((service as any).aiAdapter,"analyzeError");
+    const {ProductionVerification}=await import("./production-verification");
+    const gate=spyOn(ProductionVerification.prototype,"load").mockResolvedValue(null);
+    const outcomes:string[]=[];
+    const fetch=spyOn(globalThis,"fetch").mockImplementation((async(_input: RequestInfo | URL,init?: RequestInit)=>{
+      if(init?.method==="POST"){outcomes.push(JSON.parse(String(init.body)).outcome);return new Response("{}");}
+      return new Response(JSON.stringify({repositoryFullName:config.repoName,rawLog:JSON.stringify({schemaVersion:1,source:"production_log",repository:config.repoName,incidentId:config.runId,observation:{quality:{complete:true},ruleId:"http_5xx",service:"web",route:"all"}})}));
+    }) as typeof globalThis.fetch);
+    try {
+      await service.run({...config,workspacePath});
+      expect(diagnosis).toHaveBeenCalledTimes(1);
+      expect(outcomes).toEqual([prNeeded?"NEEDS_EVIDENCE":"NO_PR"]);
+      expect(gate).toHaveBeenCalledTimes(prNeeded?1:0);
+      expect(patch).not.toHaveBeenCalled();
+    } finally {
+      fetch.mockRestore();diagnosis.mockRestore();patch.mockRestore();gate.mockRestore();
+      await rm(workspacePath,{recursive:true,force:true});
+    }
   });
 });

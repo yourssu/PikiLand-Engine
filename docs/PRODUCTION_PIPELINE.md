@@ -15,6 +15,8 @@ This document supersedes older workflow-failure / Issue-input descriptions. The 
 
 The runner must be isolated and must not contain production credentials, network access to production databases, or tests that call production services. Approved commands run repository code; file guards are not a container/network sandbox. Use synthetic fixtures or an isolated test environment.
 
+Agent instruction files such as `AGENTS.md` and `AI.md` are optional. Their absence does not block diagnosis or repair; the tracked verification policy and source-scope guards remain mandatory for publication.
+
 ## Verification policy
 
 The policy is not generated from production logs and is not supplied as a workflow input. Example shape (commands/files must actually exist in the target repository):

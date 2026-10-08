@@ -1,5 +1,3 @@
-import * as fs from "fs/promises";
-import * as path from "path";
 import { SlackAdapter } from "../adapters/slack/slack.adapter";
 import { AiAnalysisResult, CliConfig } from "../domain/models";
 import { GithubAdapter } from "../adapters/github/github.adapter";
@@ -39,8 +37,6 @@ export class SelfHealingService {
         ruleId=bundle.observation.ruleId;
         service=bundle.observation.service;route=bundle.observation.route;
       } catch { /* legacy redacted production errors still require an explicit_error policy */ }
-      const agentFiles=["AGENTS.md","AI.md","agents.md","ai.md",".agents.md"];
-      if(!(await Promise.all(agentFiles.map(f=>fs.access(path.join(config.workspacePath,f)).then(()=>true,()=>false)))).some(Boolean)) throw new Error("Missing AGENTS.md or AI.md safety file");
       const diagnosis=await this.aiAdapter.diagnose(config,evidence,config.workspacePath);
       summary=diagnosis;
       if(!diagnosis.prNeeded) {
